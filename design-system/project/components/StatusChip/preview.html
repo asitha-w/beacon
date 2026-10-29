@@ -1,0 +1,10 @@
+<!-- @dsCard group="Status" height=56 -->
+<!doctype html>
+<html><head><meta charset="utf-8"><title>StatusChip</title></head>
+<body>
+<div id="root" class="bc-row"></div>
+<script>
+  var B = window.Beacon, r = document.getElementById('root');
+  ['open','investigating','awaiting-approval','resolved','escalated','unverified'].forEach(function (s) { r.appendChild(B.StatusChip({ status: s })); });
+</script>
+</body></html>

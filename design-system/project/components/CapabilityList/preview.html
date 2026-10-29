@@ -1,0 +1,17 @@
+<!-- @dsCard group="Connections" height=232 -->
+<!doctype html>
+<html><head><meta charset="utf-8"><title>CapabilityList</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var B = window.Beacon;
+  document.getElementById('root').appendChild(B.CapabilityList({ items: [
+    { name: 'Server inventory and state', detail: 'GET /1.3/server', state: 'available' },
+    { name: 'Managed database metrics', detail: 'GET /1.3/database/{id}/metrics', state: 'available' },
+    { name: 'Host CPU, memory, disk', detail: 'Beacon probe', state: 'available' },
+    { name: 'Power operations', detail: 'POST /1.3/server/{id}/restart', state: 'missing' },
+    { name: 'Activity log', state: 'none' },
+    { name: 'Resource health verdict', state: 'none' }
+  ] }));
+</script>
+</body></html>

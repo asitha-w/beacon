@@ -1,0 +1,1 @@
+One row per claim a finding makes. Pass `rows`, each with `kind` (the source type: metric, log, resource, activity, config), `claim` (what was observed, one sentence), `pointer` (the exact source, set in data) and optionally `href` (a link into the evidence window). A claim without a pointer is not evidence and must not be in this table; put it in the hypotheses text instead.

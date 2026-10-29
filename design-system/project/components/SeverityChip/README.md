@@ -1,0 +1,1 @@
+The severity of a finding as colour plus a word. Pass `severity` as critical, warning, info or ok; the chip supplies the word and the soft ground. Use it in the findings table, on the investigation headline and on the last box of a causal chain. Never override its colours; if a new severity is needed it is a token change, not a style override.

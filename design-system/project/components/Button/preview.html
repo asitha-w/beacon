@@ -1,0 +1,13 @@
+<!-- @dsCard group="Actions" height=72 -->
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Button</title></head>
+<body>
+<div id="root" class="bc-row"></div>
+<script>
+  var B = window.Beacon, r = document.getElementById('root');
+  r.appendChild(B.Button({ variant: 'primary', label: 'Approve restart' }));
+  r.appendChild(B.Button({ label: 'Open evidence' }));
+  r.appendChild(B.Button({ variant: 'danger', label: 'Delete connection' }));
+  r.appendChild(B.Button({ label: 'Deny', disabled: true }));
+</script>
+</body></html>

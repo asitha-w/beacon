@@ -1,0 +1,1 @@
+The lifecycle state of a finding or run. Pass `status`: open, investigating, awaiting-approval, resolved, verified, escalated or unverified. Awaiting approval is the only state that uses the `approve` colour, which is why it stands out in a list. Use it beside a severity chip, never instead of one.

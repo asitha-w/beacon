@@ -1,0 +1,699 @@
+<title>Beacon Console</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a 232px rail, a content column, and an activity panel on the pages where the agent works. Dark first. */
+:root {
+  --surface:#0f1417; --surface-raised:#161c21; --surface-sunken:#0a0e11; --line:#253038; --line-strong:#3a4854;
+  --ink:#e7edf0; --ink-muted:#97a6b0; --ink-faint:#64737d;
+  --beam:#5fd6cf; --beam-soft:#113536; --on-beam:#06201f;
+  --approve:#f2b52e; --approve-soft:#3a2b07; --critical:#ff7373; --critical-soft:#3d1616;
+  --warning:#f5a456; --warning-soft:#3d2410; --info:#86b6ff; --info-soft:#15253d; --ok:#62d39a; --ok-soft:#113224; --focus:#9fe9e4;
+  --shadow-raise:0 1px 0 rgba(0,0,0,0.45), 0 0 0 1px rgba(37,48,56,1);
+  --shadow-overlay:0 12px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(58,72,84,1);
+  --font-sans:"IBM Plex Sans","Segoe UI",system-ui,sans-serif; --font-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px; --space-6:32px; --space-7:48px;
+  --radius-sm:3px; --radius-md:6px; --radius-lg:10px; --radius-pill:999px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --surface:#f4f7f8; --surface-raised:#ffffff; --surface-sunken:#e9eef0; --line:#d6dee3; --line-strong:#aebbc4;
+    --ink:#16222b; --ink-muted:#56676f; --ink-faint:#7d8c95;
+    --beam:#0b7a75; --beam-soft:#d4f1ef; --on-beam:#ffffff;
+    --approve:#8a5a00; --approve-soft:#fff1cc; --critical:#b3261e; --critical-soft:#fde7e5;
+    --warning:#9a4a0b; --warning-soft:#feebd9; --info:#1f5fc7; --info-soft:#e2ecfb; --ok:#0f6e45; --ok-soft:#dcf3e7; --focus:#0b7a75;
+    --shadow-raise:0 1px 2px rgba(22,34,43,0.08), 0 0 0 1px rgba(214,222,227,1);
+    --shadow-overlay:0 12px 32px rgba(22,34,43,0.18), 0 0 0 1px rgba(174,187,196,1);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --surface:#f4f7f8; --surface-raised:#ffffff; --surface-sunken:#e9eef0; --line:#d6dee3; --line-strong:#aebbc4;
+  --ink:#16222b; --ink-muted:#56676f; --ink-faint:#7d8c95;
+  --beam:#0b7a75; --beam-soft:#d4f1ef; --on-beam:#ffffff;
+  --approve:#8a5a00; --approve-soft:#fff1cc; --critical:#b3261e; --critical-soft:#fde7e5;
+  --warning:#9a4a0b; --warning-soft:#feebd9; --info:#1f5fc7; --info-soft:#e2ecfb; --ok:#0f6e45; --ok-soft:#dcf3e7; --focus:#0b7a75;
+  --shadow-raise:0 1px 2px rgba(22,34,43,0.08), 0 0 0 1px rgba(214,222,227,1);
+  --shadow-overlay:0 12px 32px rgba(22,34,43,0.18), 0 0 0 1px rgba(174,187,196,1);
+  color-scheme: light;
+}
+html, body { height:100%; }
+body { background:var(--surface); color:var(--ink); font-family:var(--font-sans); font-size:14px; line-height:21px; margin:0;
+  padding-left:max(0px, env(safe-area-inset-left, 0px)); padding-right:max(0px, env(safe-area-inset-right, 0px)); }
+* { box-sizing:border-box; }
+h1,h2,h3,p { margin:0; }
+a { color:var(--beam); }
+button { font:inherit; }
+:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.mono { font-family:var(--font-mono); font-size:12.5px; line-height:18px; font-variant-numeric:tabular-nums; }
+.label { font-size:11px; line-height:16px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-muted); }
+.muted { color:var(--ink-muted); }
+.display { font-size:28px; line-height:34px; font-weight:600; letter-spacing:-.01em; text-wrap:balance; }
+.title { font-size:20px; line-height:26px; font-weight:600; }
+.heading { font-size:15px; line-height:21px; font-weight:600; }
+.sm { font-size:13px; line-height:19px; }
+.numeral { font-family:var(--font-mono); font-size:24px; line-height:28px; font-weight:500; font-variant-numeric:tabular-nums; }
+/* Beacon components, copied from the Beacon design system bundle.css */
+.bc-btn { display:inline-flex; align-items:center; gap:var(--space-2); font-family:var(--font-sans); font-size:13px; line-height:19px; font-weight:500; padding:6px var(--space-3); border-radius:var(--radius-md); border:1px solid transparent; cursor:pointer; background:transparent; color:var(--ink); }
+.bc-btn-primary { background:var(--beam); color:var(--on-beam); border-color:var(--beam); }
+.bc-btn-quiet { border-color:var(--line); color:var(--ink); }
+.bc-btn-quiet:hover { border-color:var(--line-strong); }
+.bc-btn-danger { border-color:var(--critical); color:var(--critical); }
+.bc-btn-danger:hover { background:var(--critical-soft); }
+.bc-btn[disabled] { color:var(--ink-faint); cursor:default; background:transparent; border-color:var(--line); }
+.bc-chip { display:inline-flex; align-items:center; gap:var(--space-1); font-family:var(--font-sans); font-size:11px; line-height:16px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; padding:2px var(--space-2); border-radius:var(--radius-sm); white-space:nowrap; }
+.bc-chip::before { content:""; width:8px; height:8px; border-radius:var(--radius-pill); background:currentColor; }
+.bc-chip-critical { color:var(--critical); background:var(--critical-soft); }
+.bc-chip-warning { color:var(--warning); background:var(--warning-soft); }
+.bc-chip-info { color:var(--info); background:var(--info-soft); }
+.bc-chip-ok { color:var(--ok); background:var(--ok-soft); }
+.bc-chip-approve { color:var(--approve); background:var(--approve-soft); }
+.bc-chip-neutral { color:var(--ink-muted); background:var(--surface-sunken); }
+.bc-stat { display:flex; flex-wrap:wrap; gap:var(--space-2); font-family:var(--font-mono); font-size:12.5px; line-height:18px; color:var(--ink-muted); font-variant-numeric:tabular-nums; }
+.bc-stat span + span::before { content:"·"; margin-right:var(--space-2); color:var(--ink-faint); }
+.bc-stat b { color:var(--ink); font-weight:500; }
+.bc-evidence { width:100%; border-collapse:collapse; font-family:var(--font-sans); font-size:13px; line-height:19px; color:var(--ink); }
+.bc-evidence th { text-align:left; font-size:11px; line-height:16px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-muted); padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--line); background:var(--surface-raised); }
+.bc-evidence td { padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--line); vertical-align:top; }
+.bc-evidence tr:last-child td { border-bottom:0; }
+.bc-evidence tr:hover td { background:var(--beam-soft); }
+.bc-evidence .bc-kind { font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-muted); white-space:nowrap; }
+.bc-evidence .bc-ptr { font-family:var(--font-mono); font-size:12.5px; color:var(--beam); white-space:nowrap; text-align:right; }
+.bc-evidence .bc-ptr a { color:inherit; text-decoration:none; border-bottom:1px solid var(--line-strong); }
+.bc-chain { display:flex; align-items:stretch; gap:var(--space-2); overflow-x:auto; padding:2px; }
+.bc-chain-step { position:relative; flex:0 0 auto; min-width:140px; max-width:200px; padding:var(--space-2) var(--space-3); border:1px solid var(--line-strong); border-radius:var(--radius-md); background:var(--surface-raised); font-size:13px; line-height:19px; color:var(--ink); }
+.bc-chain-step time { display:block; font-family:var(--font-mono); font-size:11px; line-height:16px; color:var(--ink-muted); margin-bottom:2px; }
+.bc-chain-arrow { align-self:center; flex:0 0 auto; width:16px; height:16px; color:var(--line-strong); }
+.bc-chain-step.bc-sev-critical { border-color:var(--critical); background:var(--critical-soft); }
+.bc-chain-step.bc-sev-warning { border-color:var(--warning); background:var(--warning-soft); }
+.bc-chain-step.bc-sev-info { border-color:var(--info); background:var(--info-soft); }
+.bc-approval { border:1px solid var(--approve); border-radius:var(--radius-lg); background:var(--surface-raised); padding:var(--space-4); color:var(--ink); max-width:560px; }
+.bc-approval h3 { margin:0 0 var(--space-2); font-size:15px; line-height:21px; font-weight:600; }
+.bc-approval p { margin:0; font-size:14px; line-height:21px; }
+.bc-approval .bc-eyebrow { display:block; font-size:11px; line-height:16px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-muted); margin:var(--space-3) 0 2px; }
+.bc-approval .bc-action { font-family:var(--font-mono); font-size:12.5px; line-height:18px; background:var(--surface-sunken); padding:var(--space-2) var(--space-3); border-radius:var(--radius-sm); overflow-wrap:anywhere; }
+.bc-approval .bc-buttons { display:flex; flex-wrap:wrap; gap:var(--space-2); margin-top:var(--space-4); align-items:center; }
+.bc-approval .bc-who { margin-left:auto; font-size:13px; color:var(--ink-muted); }
+.bc-caps { list-style:none; margin:0; padding:0; font-size:13px; line-height:19px; color:var(--ink); border:1px solid var(--line); border-radius:var(--radius-md); background:var(--surface-raised); }
+.bc-caps li { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.bc-caps li:last-child { border-bottom:0; }
+.bc-caps .bc-cap-name { flex:1 1 160px; min-width:0; }
+.bc-caps .bc-cap-detail { font-family:var(--font-mono); font-size:12.5px; color:var(--ink-muted); }
+.bc-pill { display:inline-flex; align-items:center; gap:var(--space-1); font-size:11px; line-height:16px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; padding:2px var(--space-2); border-radius:var(--radius-pill); white-space:nowrap; }
+.bc-pill::before { content:""; width:8px; height:8px; border-radius:var(--radius-pill); background:currentColor; }
+.bc-pill-available { color:var(--ok); background:var(--ok-soft); }
+.bc-pill-missing { color:var(--warning); background:var(--warning-soft); }
+.bc-pill-none { color:var(--ink-muted); background:var(--surface-sunken); }
+.bc-row { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; }
+/* App shell */
+.app { display:grid; grid-template-columns:232px minmax(0,1fr); height:100%; }
+.rail { background:var(--surface-sunken); border-right:1px solid var(--line); display:flex; flex-direction:column; padding:var(--space-4) var(--space-3); gap:var(--space-2); min-height:0; }
+.brand { font-size:20px; font-weight:600; letter-spacing:-.02em; padding:0 var(--space-2) var(--space-2); display:flex; align-items:center; gap:var(--space-2); }
+.brand i { width:10px; height:10px; border-radius:var(--radius-pill); background:var(--beam); display:inline-block; }
+.tenant { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:var(--space-2) var(--space-3); border:1px solid var(--line); border-radius:var(--radius-md); background:var(--surface-raised); font-size:13px; }
+.nav { display:flex; flex-direction:column; gap:2px; margin-top:var(--space-2); }
+.nav a { display:flex; align-items:center; justify-content:space-between; padding:6px var(--space-3); border-radius:var(--radius-md); color:var(--ink); text-decoration:none; font-size:14px; }
+.nav a:hover { background:var(--surface-raised); }
+.nav a.active { background:var(--beam-soft); color:var(--beam); }
+.nav .count { font-family:var(--font-mono); font-size:11px; padding:1px 6px; border-radius:var(--radius-sm); background:var(--approve-soft); color:var(--approve); }
+.rail .me { margin-top:auto; font-size:13px; color:var(--ink-muted); padding:0 var(--space-3); }
+.main { display:grid; grid-template-rows:auto minmax(0,1fr); min-height:0; }
+.topbar { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-3) var(--space-6); border-bottom:1px solid var(--line); background:var(--surface); flex-wrap:wrap; }
+.topbar .crumb { font-size:13px; color:var(--ink-muted); }
+.topbar .spacer { flex:1; }
+.body { display:grid; grid-template-columns:minmax(0,1fr) 320px; min-height:0; }
+.body.noaside { grid-template-columns:minmax(0,1fr); }
+.content { overflow:auto; padding:var(--space-6); min-width:0; }
+.aside { border-left:1px solid var(--line); background:var(--surface-sunken); overflow:auto; padding:var(--space-4); min-width:0; }
+.page { display:grid; gap:var(--space-5); max-width:1100px; align-content:start; }
+.card { background:var(--surface-raised); border:1px solid var(--line); border-radius:var(--radius-md); padding:var(--space-4); min-width:0; }
+.card.lg { border-radius:var(--radius-lg); }
+.tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:var(--space-3); }
+.tile { background:var(--surface-raised); border:1px solid var(--line); border-radius:var(--radius-md); padding:var(--space-3) var(--space-4); display:grid; gap:var(--space-1); min-width:0; }
+.tile canvas { width:100%; height:36px; display:block; }
+.tile .val { display:flex; align-items:baseline; gap:var(--space-2); }
+.table { width:100%; border-collapse:collapse; font-size:13px; line-height:19px; }
+.table th { text-align:left; padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--line); background:var(--surface-raised); font-size:11px; letter-spacing:.06em; text-transform:uppercase; font-weight:500; color:var(--ink-muted); }
+.table td { padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--line); vertical-align:top; }
+.table tr:last-child td { border-bottom:0; }
+.table tr.row:hover td { background:var(--beam-soft); cursor:pointer; }
+.tablewrap { overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius-md); background:var(--surface-raised); }
+.tablewrap .table { min-width:640px; }
+.empty { padding:var(--space-6); text-align:center; color:var(--ink-muted); border:1px dashed var(--line-strong); border-radius:var(--radius-md); }
+.form { display:grid; gap:var(--space-3); max-width:460px; }
+.field { display:grid; gap:var(--space-1); }
+.field label { font-size:13px; color:var(--ink-muted); }
+.field input, .field select { font:inherit; color:var(--ink); background:var(--surface-sunken); border:1px solid var(--line-strong); border-radius:var(--radius-md); padding:8px var(--space-3); width:100%; }
+.field input::placeholder { color:var(--ink-faint); }
+.center { min-height:100%; display:grid; place-items:center; padding:var(--space-6) var(--space-4); }
+.login { width:min(420px,100%); display:grid; gap:var(--space-4); }
+.login .brand { font-size:32px; padding:0; }
+.hr { height:1px; background:var(--line); }
+.steps { display:flex; gap:var(--space-3); flex-wrap:wrap; font-size:13px; color:var(--ink-muted); }
+.steps b { color:var(--ink); font-weight:500; }
+.steps .done { color:var(--ok); }
+.conn { display:grid; gap:var(--space-3); align-content:start; }
+.conn-head { display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap; }
+.conn-head .name { font-weight:600; }
+.code { font-family:var(--font-mono); font-size:12.5px; line-height:18px; background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--radius-sm); padding:var(--space-2) var(--space-3); overflow-x:auto; white-space:pre; }
+.thread { display:grid; gap:var(--space-3); }
+.msg { display:grid; grid-template-columns:28px minmax(0,1fr); gap:var(--space-3); }
+.msg .who { width:28px; height:28px; border-radius:var(--radius-pill); display:grid; place-items:center; font-size:11px; font-weight:600; background:var(--surface-sunken); border:1px solid var(--line); color:var(--ink-muted); }
+.msg .who.beacon { background:var(--beam-soft); color:var(--beam); border-color:transparent; }
+.msg .who.user { background:var(--surface-raised); color:var(--ink); }
+.msg .body2 { display:grid; gap:var(--space-2); min-width:0; }
+.msg .meta { font-size:12px; color:var(--ink-muted); display:flex; gap:var(--space-2); flex-wrap:wrap; }
+.msg .meta b { color:var(--ink); font-weight:500; }
+.tools { display:grid; gap:4px; font-family:var(--font-mono); font-size:12.5px; line-height:18px; color:var(--ink-muted); }
+.tools .t { display:flex; gap:var(--space-2); align-items:center; }
+.tools .t i { width:8px; height:8px; border-radius:var(--radius-pill); background:var(--ok); display:inline-block; }
+.tools .t i.run { background:var(--info); }
+.hyp { border-left:2px solid var(--line-strong); padding-left:var(--space-3); display:grid; gap:4px; }
+.hyp.v { border-color:var(--ok); }
+.hyp.u { border-color:var(--ink-faint); }
+.ask { display:flex; gap:var(--space-2); align-items:center; border:1px solid var(--line-strong); border-radius:var(--radius-md); background:var(--surface-sunken); padding:4px 4px 4px var(--space-3); }
+.ask input { flex:1; min-width:0; background:transparent; border:0; color:var(--ink); font:inherit; padding:6px 0; }
+.ask input:focus { outline:none; }
+.activity { display:grid; gap:var(--space-2); }
+.act { display:grid; gap:2px; padding:var(--space-2) var(--space-3); border:1px solid var(--line); border-radius:var(--radius-md); background:var(--surface-raised); font-size:13px; line-height:19px; }
+.act.task { border-color:var(--approve); }
+.act .t { font-family:var(--font-mono); font-size:11px; color:var(--ink-muted); }
+.toasts { position:fixed; right:max(16px, env(safe-area-inset-right, 0px)); bottom:calc(64px + env(safe-area-inset-bottom, 0px)); display:grid; gap:var(--space-2); z-index:20; max-width:360px; }
+.toast { background:var(--surface-raised); box-shadow:var(--shadow-overlay); border-radius:var(--radius-md); padding:var(--space-2) var(--space-3); font-size:13px; }
+.demobar { position:fixed; left:0; right:0; bottom:0; padding:var(--space-2) max(16px, env(safe-area-inset-left, 0px)) calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); background:var(--surface-sunken); border-top:1px solid var(--line-strong); display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap; font-size:12px; color:var(--ink-muted); z-index:15; }
+.demobar .label { color:var(--approve); }
+.bar { height:8px; border-radius:var(--radius-pill); background:var(--surface-sunken); overflow:hidden; border:1px solid var(--line); }
+.bar i { display:block; height:100%; background:var(--beam); }
+.bar i.warn { background:var(--warning); }
+.split { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:var(--space-4); }
+.kv { display:grid; grid-template-columns:auto 1fr; gap:4px var(--space-3); font-size:13px; }
+.kv dt { color:var(--ink-muted); }
+.kv dd { margin:0; min-width:0; overflow-wrap:anywhere; }
+.segs { display:inline-flex; border:1px solid var(--line-strong); border-radius:var(--radius-md); overflow:hidden; }
+.segs button { background:transparent; border:0; color:var(--ink-muted); padding:4px var(--space-3); font-size:12px; cursor:pointer; }
+.segs button.on { background:var(--beam-soft); color:var(--beam); }
+.policy { display:inline-flex; gap:2px; }
+.policy span { font-size:11px; padding:1px 6px; border-radius:var(--radius-sm); background:var(--surface-sunken); color:var(--ink-muted); }
+.policy span.allow { color:var(--ok); background:var(--ok-soft); }
+.policy span.ask { color:var(--approve); background:var(--approve-soft); }
+.policy span.deny { color:var(--critical); background:var(--critical-soft); }
+.hidden { display:none !important; }
+@media (max-width: 900px) {
+  .app { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); }
+  .rail { flex-direction:row; flex-wrap:wrap; align-items:center; border-right:0; border-bottom:1px solid var(--line); }
+  .rail .me { margin-top:0; width:100%; }
+  .nav { flex-direction:row; flex-wrap:wrap; margin-top:0; }
+  .body { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) auto; }
+  .aside { border-left:0; border-top:1px solid var(--line); max-height:40vh; }
+  .content, .topbar { padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); }
+  .content { padding-top:var(--space-4); padding-bottom:96px; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+<div id="app" class="app"></div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<div id="demobar" class="demobar"></div>
+<script>
+/* Beacon components, copied from the Beacon design system bundle.js */
+(function () {
+  function el(tag, attrs, children) {
+    var n = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === 'class') n.className = attrs[k];
+      else if (k === 'text') n.textContent = attrs[k];
+      else if (k === 'html') n.innerHTML = attrs[k];
+      else if (k.indexOf('on') === 0 && typeof attrs[k] === 'function') n.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
+      else if (attrs[k] === true) n.setAttribute(k, '');
+      else if (attrs[k] !== false && attrs[k] != null) n.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) { if (c == null || c === false) return; n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return n;
+  }
+  function Button(p) { p = p || {}; return el('button', { class: 'bc-btn bc-btn-' + (p.variant || 'quiet'), type: p.type || 'button', disabled: !!p.disabled, onClick: p.onClick, id: p.id }, [p.label || '']); }
+  var sevWords = { critical: 'Critical', warning: 'Warning', info: 'Info', ok: 'Healthy' };
+  function SeverityChip(p) { p = p || {}; var s = p.severity || 'info'; return el('span', { class: 'bc-chip bc-chip-' + s, text: p.label || sevWords[s] || s }); }
+  var statusTone = { open: 'critical', investigating: 'info', 'awaiting-approval': 'approve', resolved: 'ok', verified: 'ok', escalated: 'warning', unverified: 'neutral', executing: 'info', verifying: 'info' };
+  var statusWords = { open: 'Open', investigating: 'Investigating', 'awaiting-approval': 'Awaiting approval', resolved: 'Resolved', verified: 'Verified', escalated: 'Escalated', unverified: 'Unverified', executing: 'Executing', verifying: 'Verifying' };
+  function StatusChip(p) { p = p || {}; var s = p.status || 'open'; return el('span', { class: 'bc-chip bc-chip-' + (statusTone[s] || 'neutral'), text: p.label || statusWords[s] || s }); }
+  function StatRow(p) { p = p || {}; return el('div', { class: 'bc-stat' }, (p.items || []).map(function (it) { if (typeof it === 'string') return el('span', { text: it }); return el('span', null, [el('b', { text: it.value }), ' ' + (it.label || '')]); })); }
+  function EvidenceTable(p) {
+    p = p || {};
+    var head = el('thead', null, [el('tr', null, [el('th', { text: 'Source' }), el('th', { text: 'Observed' }), el('th', { text: 'Pointer' })])]);
+    var body = el('tbody', null, (p.rows || []).map(function (r) {
+      var ptr = r.href ? el('a', { href: r.href, text: r.pointer }) : document.createTextNode(r.pointer || '');
+      return el('tr', null, [el('td', { class: 'bc-kind', text: r.kind || '' }), el('td', { text: r.claim || '' }), el('td', { class: 'bc-ptr' }, [ptr])]);
+    }));
+    return el('table', { class: 'bc-evidence' }, [head, body]);
+  }
+  function arrow() { var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('class', 'bc-chain-arrow'); s.setAttribute('aria-hidden', 'true'); var p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', 'M2 8h10M8 4l4 4-4 4'); p.setAttribute('fill', 'none'); p.setAttribute('stroke', 'currentColor'); p.setAttribute('stroke-width', '1.5'); s.appendChild(p); return s; }
+  function CausalChain(p) { p = p || {}; var out = []; (p.steps || []).forEach(function (s, i) { if (i > 0) out.push(arrow()); out.push(el('div', { class: 'bc-chain-step' + (s.severity ? ' bc-sev-' + s.severity : '') }, [el('time', { text: s.time || '' }), s.text || ''])); }); return el('div', { class: 'bc-chain', role: 'list' }, out); }
+  function ApprovalCard(p) {
+    p = p || {};
+    return el('div', { class: 'bc-approval', role: 'group', 'aria-label': 'Approval request' }, [
+      el('h3', { text: p.finding || '' }),
+      el('span', { class: 'bc-eyebrow', text: 'Proposed action' }), el('div', { class: 'bc-action', text: p.action || '' }),
+      el('span', { class: 'bc-eyebrow', text: 'Blast radius' }), el('p', { class: 'bc-blast', text: p.blastRadius || '' }),
+      el('div', { class: 'bc-buttons' }, [
+        Button({ variant: 'primary', label: p.approveLabel || 'Approve', disabled: !p.canApprove, onClick: p.onApprove }),
+        Button({ variant: 'quiet', label: 'Deny', disabled: !p.canApprove, onClick: p.onDeny }),
+        el('span', { class: 'bc-who', text: p.canApprove ? 'You can approve this.' : 'Administrators approve this.' })
+      ])
+    ]);
+  }
+  var pillWords = { available: 'Available', missing: 'Missing permission', none: 'Not offered' };
+  function CapabilityList(p) { p = p || {}; return el('ul', { class: 'bc-caps' }, (p.items || []).map(function (it) { var st = it.state || 'none'; return el('li', null, [el('span', { class: 'bc-cap-name', text: it.name || '' }), it.detail ? el('span', { class: 'bc-cap-detail', text: it.detail }) : null, el('span', { class: 'bc-pill bc-pill-' + st, text: pillWords[st] || st })]); })); }
+  window.Beacon = { Button: Button, SeverityChip: SeverityChip, StatusChip: StatusChip, StatRow: StatRow, EvidenceTable: EvidenceTable, CausalChain: CausalChain, ApprovalCard: ApprovalCard, CapabilityList: CapabilityList, el: el };
+})();
+
+(function () {
+  var B = window.Beacon, el = B.el;
+  var KEY = 'beacon-proto-v1';
+  /* ---------- state ---------- */
+  var defaults = function () { return {
+    user: null, tenant: null,
+    conn: { azure: { status: 'none' }, upcloud: { status: 'none' }, probe: { status: 'none', hosts: [] } },
+    scenario: { id: null, step: -1, approved: false, done: false },
+    findings: [
+      { id: 'F-0139', title: 'db-01 CPU above 80% during the nightly backup window', service: 'Shop data', resource: 'db-01', severity: 'info', status: 'resolved', age: '2d', run: 'inv-0098' },
+      { id: 'F-0141', title: 'aks-shop: ingress pod restarted twice after rollout 2026-10-28', service: 'Shop web', resource: 'aks-shop', severity: 'warning', status: 'open', age: '14h', run: 'inv-00a2' }
+    ],
+    activity: [], approvals: [], runs: [
+      { id: 'inv-0098', finding: 'F-0139', cost: 0.38, tokens: '92k', duration: '2m 10s', outcome: 'Resolved, no action', when: '2d ago' },
+      { id: 'inv-00a2', finding: 'F-0141', cost: 0.61, tokens: '140k', duration: '3m 42s', outcome: 'Open, recommendation', when: '14h ago' }
+    ]
+  }; };
+  var S = load();
+  function load() { try { var raw = localStorage.getItem(KEY); if (raw) { var o = JSON.parse(raw); return Object.assign(defaults(), o); } } catch (e) {} return defaults(); }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+  function reset() { S = defaults(); save(); clearTimers(); location.hash = '#login'; render(); }
+
+  /* ---------- static data ---------- */
+  var CAPS = {
+    azure: [
+      { name: 'Resource discovery', detail: 'Resource Graph · Reader', state: 'available' },
+      { name: 'Platform metrics', detail: 'Azure Monitor metrics', state: 'available' },
+      { name: 'Resource health verdict', detail: 'Resource Health API', state: 'available' },
+      { name: 'Activity log, who changed what', detail: 'Activity Log · Reader', state: 'available' },
+      { name: 'Log Analytics queries', detail: 'Log Analytics Reader', state: 'missing' },
+      { name: 'Kubernetes API, aks-shop', detail: 'Entra RBAC · view ClusterRole', state: 'available' },
+      { name: 'In-guest fixes', detail: 'Run Command · write identity', state: 'available' },
+      { name: 'Memory, disk, processes', detail: 'Beacon probe on web-01', state: 'available' }
+    ],
+    upcloud: [
+      { name: 'Server inventory and state', detail: 'GET /1.3/server', state: 'available' },
+      { name: 'Managed database metrics', detail: 'GET /1.3/database/{id}/metrics', state: 'available' },
+      { name: 'Power operations', detail: 'POST /1.3/server/{id}/start', state: 'available' },
+      { name: 'Host CPU, memory, disk', detail: 'Beacon probe on edge-01', state: 'available' },
+      { name: 'Activity log', state: 'none' },
+      { name: 'Resource health verdict', state: 'none' }
+    ]
+  };
+  var RESOURCES = [
+    { id: 'web-01', kind: 'Azure VM', detail: 'Standard_B2s · westeurope', service: 'Shop web', probe: 'online' },
+    { id: 'aks-shop', kind: 'AKS cluster', detail: '3 nodes · 1.31', service: 'Shop web', probe: 'online' },
+    { id: 'la-shop', kind: 'Log Analytics', detail: 'workspace', service: 'Shop web', probe: '' },
+    { id: 'db-01', kind: 'UpCloud managed PostgreSQL', detail: '2 vCPU · fi-hel2', service: 'Shop data', probe: '' },
+    { id: 'edge-01', kind: 'UpCloud server', detail: '1 vCPU 1 GB · de-fra1', service: 'Edge', probe: 'online' }
+  ];
+  var RESPONDERS = [
+    { id: 'disk-pressure-linux', signal: 'disk_used_percent > 90 for 5m', scope: 'VMs with a probe', mode: 'Review', level: 'L3', tools: [['read metrics', 'allow'], ['tail logs', 'allow'], ['run command', 'ask'], ['restart', 'deny']] },
+    { id: 'pod-crashloop', signal: 'restarts > 3 in 10m', scope: 'Kubernetes', mode: 'Review', level: 'L3', tools: [['get pods, events', 'allow'], ['tail pod logs', 'allow'], ['rollout undo', 'ask'], ['delete pod', 'deny']] },
+    { id: 'server-stopped', signal: 'state != started, no operator event', scope: 'UpCloud servers', mode: 'Autonomous', level: 'L4', tools: [['get server', 'allow'], ['start server', 'allow'], ['stop server', 'deny']] },
+    { id: 'slo-burn-rate', signal: 'burn rate > 2x over 1h', scope: 'Services with an SLO', mode: 'Review', level: 'L2', tools: [['read metrics', 'allow'], ['notify', 'allow']] },
+    { id: 'cert-expiry', signal: 'cert expires in < 14d', scope: 'Ingress, load balancers', mode: 'Review', level: 'L2', tools: [['read resource', 'allow'], ['notify', 'allow']] }
+  ];
+  var EVIDENCE = [
+    { kind: 'metric', claim: 'Disk on / is 94% used, up from 71% at 01:10.', pointer: 'node_filesystem_avail_bytes · web-01', href: '#inv/inv-00a7' },
+    { kind: 'log', claim: 'nginx access log grew 3.1 GB in 40 minutes.', pointer: '/var/log/nginx/access.log · filelog', href: '#inv/inv-00a7' },
+    { kind: 'activity', claim: 'Deployment at 01:10 by ci-deploy set NGINX_DEBUG=1.', pointer: 'Activity Log · web-01', href: '#inv/inv-00a7' },
+    { kind: 'config', claim: 'logrotate has not completed since 2026-10-21.', pointer: '/var/lib/logrotate/status', href: '#inv/inv-00a7' },
+    { kind: 'metric', claim: 'Request rate is flat at 310 rps. No traffic spike.', pointer: 'nginx_http_requests_total · web-01', href: '#inv/inv-00a7' },
+    { kind: 'resource', claim: 'Resource Health reports Available. No platform event.', pointer: 'Resource Health · web-01', href: '#inv/inv-00a7' }
+  ];
+  var CHAIN = [
+    { time: '01:10', text: 'Deploy sets NGINX_DEBUG=1' },
+    { time: '01:12', text: 'Access log grows 80 MB/min' },
+    { time: '01:40', text: 'logrotate stalled, disk at 90%' },
+    { time: '01:52', text: 'Disk at 94%, writes slowing', severity: 'critical' }
+  ];
+  var APPROVAL = {
+    finding: 'Disk on web-01 is 94% full because nginx debug logging is on and logrotate has stalled.',
+    action: 'az vm run-command invoke web-01: logrotate --force /etc/logrotate.d/nginx && sed -i "s/NGINX_DEBUG=1/NGINX_DEBUG=0/" /etc/nginx/env && nginx -s reload',
+    blastRadius: 'Rotates the access log now and turns debug logging off. nginx reloads without dropping connections. About 3 GB is compressed; nothing is deleted.',
+    approveLabel: 'Approve fix'
+  };
+  /* ---------- scenario: disk fill on web-01 ---------- */
+  var SC = [
+    { at: 0, run: function () { act('signal', 'Signal loop: disk_used_percent on web-01 crossed 90% and held for 5 minutes.'); toast('Signal: disk on web-01 above 90%'); } },
+    { at: 1500, run: function () {
+      S.findings.unshift({ id: 'F-0142', title: 'Disk filling on web-01', service: 'Shop web', resource: 'web-01', severity: 'warning', status: 'investigating', age: 'now', run: 'inv-00a7' });
+      S.runs.unshift({ id: 'inv-00a7', finding: 'F-0142', cost: 0.00, tokens: '0', duration: '0s', outcome: 'Running', when: 'now' });
+      act('run', 'Trigger loop: responder disk-pressure-linux matched. Investigation inv-00a7 started.');
+    } },
+    { at: 3500, run: function () { act('tool', 'Beacon is collecting evidence: metrics, nginx log tail, Activity Log, logrotate status.'); } },
+    { at: 7500, run: function () { act('evidence', '6 evidence rows recorded with source pointers.'); } },
+    { at: 9500, run: function () { act('hyp', 'Two hypotheses formed. Traffic spike contradicted by flat request rate.'); } },
+    { at: 11500, run: function () {
+      var f = find('F-0142'); f.severity = 'critical'; f.status = 'awaiting-approval';
+      var r = S.runs.filter(function (x) { return x.id === 'inv-00a7'; })[0]; r.cost = 0.47; r.tokens = '118k'; r.duration = '2m 40s'; r.outcome = 'Awaiting approval';
+      S.approvals.push({ id: 'A-0021', finding: 'F-0142', run: 'inv-00a7', task: 'logrotate-force + debug off on web-01', level: 'L3', when: 'now' });
+      act('verdict', 'Verifier: 4 of 4 material claims have evidence. Cause marked Verified.');
+      act('task', 'Task A-0021 needs approval: fix disk on web-01 through Run Command. Policy: review mode, L3.', true);
+      toast('Approval requested: fix disk on web-01');
+      notify('Email sent to oncall@shop.example and webhook posted to #ops.');
+    } }
+  ];
+  var AFTER = [
+    { at: 0, run: function () { var f = find('F-0142'); f.status = 'executing'; act('action', 'Approved by ' + (S.user ? S.user.name : 'you') + '. Running the fix on web-01 with the write identity.'); } },
+    { at: 2500, run: function () { act('action', 'Run Command finished in 6s. logrotate completed, debug logging off, nginx reloaded.'); var f = find('F-0142'); f.status = 'verifying'; } },
+    { at: 5500, run: function () {
+      var f = find('F-0142'); f.status = 'resolved'; f.severity = 'ok';
+      var r = S.runs.filter(function (x) { return x.id === 'inv-00a7'; })[0]; r.cost = 0.52; r.tokens = '131k'; r.duration = '3m 05s'; r.outcome = 'Resolved, verified';
+      S.approvals = S.approvals.filter(function (a) { return a.id !== 'A-0021'; });
+      S.scenario.done = true;
+      act('verify', 'Verification: disk on web-01 at 61% and falling. Access log growth back to 2 MB/min. F-0142 resolved.');
+      toast('Resolved: disk on web-01 verified at 61%');
+    } }
+  ];
+  var timers = [];
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+  function runScript(script, from, key) {
+    clearTimers();
+    script.forEach(function (st, i) {
+      if (i <= from) return;
+      var t = setTimeout(function () { st.run(); S.scenario[key] = i; save(); render(); }, Math.max(0, st.at - (from >= 0 ? script[from].at : 0)));
+      timers.push(t);
+    });
+  }
+  function startScenario() {
+    if (S.scenario.id) return;
+    S.scenario = { id: 'disk-fill', step: -1, approved: false, done: false, afterStep: -1 }; save();
+    telem.diskRamp = Date.now();
+    runScript(SC, -1, 'step');
+  }
+  function approve() { if (S.scenario.approved) return; S.scenario.approved = true; save(); telem.diskRecover = Date.now(); runScript(AFTER, -1, 'afterStep'); render(); }
+  function deny() { S.scenario.approved = 'denied'; var f = find('F-0142'); f.status = 'escalated'; S.approvals = []; act('verdict', 'Denied. F-0142 escalated to the on-call engineer with the full thread.'); save(); render(); }
+  function resume() {
+    if (!S.scenario.id) return;
+    if (S.scenario.approved === true && !S.scenario.done) runScript(AFTER, S.scenario.afterStep, 'afterStep');
+    else if (!S.scenario.approved && S.scenario.step < SC.length - 1) runScript(SC, S.scenario.step, 'step');
+  }
+  function find(id) { return S.findings.filter(function (f) { return f.id === id; })[0]; }
+  function act(kind, text, task) { S.activity.unshift({ kind: kind, text: text, task: !!task, t: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }); if (S.activity.length > 40) S.activity.length = 40; save(); }
+  function notify(text) { act('notify', text); }
+  function toast(text) { var box = document.getElementById('toasts'); var t = el('div', { class: 'toast', text: text }); box.appendChild(t); setTimeout(function () { t.remove(); }, 4200); }
+
+  /* ---------- telemetry simulation ---------- */
+  var telem = { series: { disk: [], cpu: [], rate: [], probes: [] }, diskRamp: null, diskRecover: null, diskVal: 71, cpuVal: 23, rateVal: 1240, started: Date.now() };
+  function tick() {
+    var now = Date.now();
+    if (S.scenario.id && !S.scenario.approved) { telem.diskVal = Math.min(94, 71 + (now - (telem.diskRamp || now)) / 1000 * 2.1); }
+    else if (S.scenario.approved === true) { telem.diskVal = Math.max(61, telem.diskVal - 2.3); }
+    else { telem.diskVal = 71 + Math.sin(now / 9000) * 0.6; }
+    telem.cpuVal = Math.max(4, Math.min(60, telem.cpuVal + (Math.random() - 0.5) * 6));
+    telem.rateVal = Math.max(900, Math.min(1600, telem.rateVal + (Math.random() - 0.5) * 80));
+    push('disk', telem.diskVal); push('cpu', telem.cpuVal); push('rate', telem.rateVal);
+    drawTiles();
+  }
+  function push(k, v) { var s = telem.series[k]; s.push(v); if (s.length > 60) s.shift(); }
+  function spark(canvas, data, max, warn) {
+    var dpr = window.devicePixelRatio || 1; var w = canvas.clientWidth || 200, h = 36; canvas.width = w * dpr; canvas.height = h * dpr;
+    var ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, w, h);
+    var css = getComputedStyle(document.documentElement);
+    var col = css.getPropertyValue(warn ? '--warning' : '--beam').trim(); var grid = css.getPropertyValue('--line').trim();
+    ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, h - 0.5); ctx.lineTo(w, h - 0.5); ctx.stroke();
+    if (data.length < 2) return;
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath();
+    data.forEach(function (v, i) { var x = i / 59 * w, y = h - 2 - (v / max) * (h - 6); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+    ctx.stroke();
+    var last = data[data.length - 1]; var lx = (data.length - 1) / 59 * w, ly = h - 2 - (last / max) * (h - 6);
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(lx, ly, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
+  function drawTiles() {
+    var d = document.getElementById('sp-disk'); if (!d) return;
+    var dv = document.getElementById('v-disk'); dv.textContent = telem.diskVal.toFixed(0) + '%'; dv.style.color = telem.diskVal > 90 ? 'var(--critical)' : '';
+    spark(d, telem.series.disk, 100, telem.diskVal > 90);
+    spark(document.getElementById('sp-cpu'), telem.series.cpu, 100, false); document.getElementById('v-cpu').textContent = telem.cpuVal.toFixed(0) + '%';
+    spark(document.getElementById('sp-rate'), telem.series.rate, 1800, false); document.getElementById('v-rate').textContent = Math.round(telem.rateVal).toLocaleString();
+    var age = Math.round((Date.now() % 15000) / 1000); var la = document.getElementById('v-last'); if (la) la.textContent = 'last sample ' + age + 's ago';
+  }
+  setInterval(tick, 1000);
+
+  /* ---------- routing ---------- */
+  function route() { var h = location.hash.replace(/^#/, '') || 'findings'; if (!S.user) return 'login'; if (!S.tenant) return h.indexOf('setup') === 0 ? h : 'setup-tenant'; if (h === 'login') return 'findings'; return h; }
+  window.addEventListener('hashchange', render);
+  function go(h) { location.hash = '#' + h; }
+
+  /* ---------- shell ---------- */
+  var NAV = [['findings', 'Findings'], ['investigations', 'Investigations'], ['approvals', 'Approvals'], ['services', 'Services'], ['connections', 'Connections'], ['responders', 'Responders'], ['consumption', 'Consumption']];
+  function shell(contentNode, opts) {
+    opts = opts || {}; var r = route().split('/')[0];
+    var rail = el('nav', { class: 'rail', 'aria-label': 'Beacon' }, [
+      el('div', { class: 'brand' }, [el('i'), 'Beacon']),
+      el('div', { class: 'tenant' }, [el('span', { text: S.tenant ? S.tenant.name : 'No tenant' }), el('span', { class: 'label', text: S.tenant ? S.tenant.env : '' })]),
+      el('div', { class: 'nav' }, NAV.map(function (n) { return el('a', { href: '#' + n[0], class: r === n[0] || (n[0] === 'investigations' && r === 'inv') ? 'active' : '' }, [n[1], n[0] === 'approvals' && S.approvals.length ? el('span', { class: 'count', text: String(S.approvals.length) }) : null]); })),
+      el('div', { class: 'me' }, [el('div', { text: S.user ? S.user.name : '' }), el('div', { class: 'sm', text: S.user ? S.user.role : '' })])
+    ]);
+    var top = el('div', { class: 'topbar' }, [el('span', { class: 'crumb', text: opts.crumb || '' }), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: probeSummary() })]);
+    var body = el('div', { class: 'body' + (opts.aside ? '' : ' noaside') }, [el('div', { class: 'content' }, [contentNode]), opts.aside ? el('aside', { class: 'aside', 'aria-label': 'Activity' }, [activityPanel()]) : null]);
+    return el('div', { class: 'app' }, [rail, el('div', { class: 'main' }, [top, body])]);
+  }
+  function probeSummary() { var on = S.conn.probe.hosts.length; return on ? on + ' probes online · 2 connections' : 'No probes yet'; }
+  function activityPanel() {
+    var items = S.activity.length ? S.activity.map(function (a) {
+      var n = el('div', { class: 'act' + (a.task ? ' task' : '') }, [el('span', { class: 't', text: a.t + ' · ' + a.kind }), el('span', { text: a.text })]);
+      if (a.task && S.approvals.length) n.appendChild(el('div', { class: 'bc-row', style: 'margin-top:6px' }, [B.Button({ variant: 'primary', label: 'Open approval', onClick: function () { go('inv/inv-00a7'); } })]));
+      return n;
+    }) : [el('div', { class: 'empty sm', text: 'Quiet. Signals, runs, approvals and notifications appear here as they happen.' })];
+    return el('div', { class: 'activity' }, [el('div', { class: 'label', text: 'Activity' })].concat(items));
+  }
+  /* ---------- pages ---------- */
+  function pageLogin() {
+    var email = el('input', { id: 'login-email', type: 'email', placeholder: 'you@company.example', autocomplete: 'username' });
+    var pw = el('input', { id: 'login-pw', type: 'password', placeholder: 'Password', autocomplete: 'current-password' });
+    function signIn(name) { S.user = { name: name || (email.value.split('@')[0] || 'asitha'), role: 'Administrator', email: email.value || 'asitha@company.example' }; save(); go(S.tenant ? 'findings' : 'setup-tenant'); render(); }
+    var form = el('form', { class: 'form', onSubmit: function (e) { e.preventDefault(); signIn(); } }, [
+      el('div', { class: 'field' }, [el('label', { for: 'login-email', text: 'Work email' }), email]),
+      el('div', { class: 'field' }, [el('label', { for: 'login-pw', text: 'Password' }), pw]),
+      B.Button({ variant: 'primary', label: 'Sign in', type: 'submit' })
+    ]);
+    return el('div', { class: 'center' }, [el('div', { class: 'login' }, [
+      el('div', { class: 'brand' }, [el('i'), 'Beacon']),
+      el('p', { class: 'muted', text: 'Reliability operations for teams without a full-time SRE. Sign in to your workspace.' }),
+      form, el('div', { class: 'hr' }),
+      B.Button({ label: 'Continue with Microsoft Entra', onClick: function () { signIn('asitha'); } }),
+      el('p', { class: 'sm muted', text: 'Prototype. Any email and password sign you in. Nothing is sent anywhere.' })
+    ])]);
+  }
+  function stepsBar(n) { var names = ['Sign in', 'Create tenant', 'Connect clouds', 'Install probe']; return el('div', { class: 'steps' }, names.map(function (s, i) { return el('span', { class: i < n ? 'done' : (i === n ? '' : 'muted') }, [i < n ? '✓ ' : (i + 1) + '. ', i === n ? el('b', { text: s }) : s]); })); }
+  function pageSetupTenant() {
+    var name = el('input', { id: 'tenant-name', placeholder: 'Shop AS', value: 'Shop AS' });
+    var env = el('select', { id: 'tenant-env' }, [el('option', { text: 'production' }), el('option', { text: 'staging' })]);
+    var region = el('select', { id: 'tenant-region' }, [el('option', { text: 'EU, Finland (UpCloud fi-hel2)' }), el('option', { text: 'EU, Netherlands (Azure westeurope)' })]);
+    var form = el('form', { class: 'form', onSubmit: function (e) { e.preventDefault(); S.tenant = { name: name.value || 'Shop AS', env: env.value, region: region.value, cell: 'cell-' + Math.random().toString(16).slice(2, 6), egressIp: '94.237.' + (20 + Math.floor(Math.random() * 200)) + '.' + (10 + Math.floor(Math.random() * 200)) }; act('run', 'Tenant ' + S.tenant.name + ' created. Cell ' + S.tenant.cell + ' provisioned with static egress ' + S.tenant.egressIp + '.'); save(); go('setup-connect'); render(); } }, [
+      el('div', { class: 'field' }, [el('label', { for: 'tenant-name', text: 'Tenant name' }), name]),
+      el('div', { class: 'field' }, [el('label', { for: 'tenant-env', text: 'First environment' }), env]),
+      el('div', { class: 'field' }, [el('label', { for: 'tenant-region', text: 'Where the Beacon cell runs' }), region]),
+      el('p', { class: 'sm muted', text: 'A cell is your own isolated worker set: its own network, its own credentials, one static egress address you can allowlist.' }),
+      B.Button({ variant: 'primary', label: 'Create tenant', type: 'submit' })
+    ]);
+    return el('div', { class: 'page' }, [stepsBar(1), el('h1', { class: 'display', text: 'Create your tenant' }), el('div', { class: 'card lg' }, [form])]);
+  }
+  function pageSetupConnect() {
+    var az = S.conn.azure, uc = S.conn.upcloud, pr = S.conn.probe;
+    function connectAzure() { az.status = 'validating'; save(); render(); setTimeout(function () { az.status = 'connected'; az.scope = 'Subscription 7f3c21e0-… (Shop production)'; az.identity = 'Entra app Beacon, federated credential, Reader'; az.validated = new Date().toISOString(); act('run', 'Azure connected. Discovery found 3 resources in the subscription.'); save(); render(); }, 1800); }
+    function connectUpcloud() { uc.status = 'validating'; save(); render(); setTimeout(function () { uc.status = 'connected'; uc.scope = 'Sub-account beacon-ro'; uc.identity = 'API token, read permissions'; uc.validated = new Date().toISOString(); act('run', 'UpCloud connected. Discovery found 2 resources.'); save(); render(); }, 1600); }
+    function installProbe() { pr.status = 'waiting'; save(); render(); var hosts = ['edge-01', 'web-01', 'aks-shop']; hosts.forEach(function (h, i) { setTimeout(function () { pr.hosts.push(h); if (pr.hosts.length === hosts.length) pr.status = 'online'; act('signal', 'Probe ' + h + ' dialled in over OpAMP. Telemetry flowing.'); toast('Probe online: ' + h); save(); render(); }, 1500 + i * 1400); }); }
+    var azCard = el('div', { class: 'card conn' }, [
+      el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: 'Microsoft Azure' }), connChip(az.status)]),
+      az.status === 'none' ? el('div', { class: 'form' }, [
+        el('div', { class: 'field' }, [el('label', { for: 'az-sub', text: 'Subscription id' }), el('input', { id: 'az-sub', value: '7f3c21e0-5d2a-4b7e-9a11-0c3f1e2d8b44' })]),
+        el('p', { class: 'sm muted', text: 'You consent to the Beacon app in your Entra tenant and assign Reader on this subscription. No client secret is created.' }),
+        B.Button({ variant: 'primary', label: 'Consent and validate', onClick: connectAzure })
+      ]) : az.status === 'validating' ? el('p', { class: 'muted', text: 'Validating identity, checking role assignment, listing capabilities…' }) : el('div', { class: 'conn' }, [
+        el('dl', { class: 'kv' }, [el('dt', { text: 'Scope' }), el('dd', { text: az.scope }), el('dt', { text: 'Identity' }), el('dd', { text: az.identity })]),
+        B.CapabilityList({ items: CAPS.azure })
+      ])
+    ]);
+    var ucCard = el('div', { class: 'card conn' }, [
+      el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: 'UpCloud' }), connChip(uc.status)]),
+      uc.status === 'none' ? el('div', { class: 'form' }, [
+        el('div', { class: 'field' }, [el('label', { for: 'uc-token', text: 'API token for a read-only sub-account' }), el('input', { id: 'uc-token', type: 'password', value: 'ucat_01J9…redacted' })]),
+        el('p', { class: 'sm muted', text: 'Create a sub-account with read permissions and paste its token. Beacon stores it in the cell\'s secret store only.' }),
+        B.Button({ variant: 'primary', label: 'Validate token', onClick: connectUpcloud })
+      ]) : uc.status === 'validating' ? el('p', { class: 'muted', text: 'Validating token, listing servers and managed databases…' }) : el('div', { class: 'conn' }, [
+        el('dl', { class: 'kv' }, [el('dt', { text: 'Scope' }), el('dd', { text: uc.scope }), el('dt', { text: 'Identity' }), el('dd', { text: uc.identity })]),
+        B.CapabilityList({ items: CAPS.upcloud })
+      ])
+    ]);
+    var cmd = 'curl -fsSL https://probe.beacon.example/install.sh | sh -s -- \\\n  --tenant ' + (S.tenant ? S.tenant.cell : 'cell') + ' --gateway probe-' + (S.tenant ? S.tenant.cell : 'cell') + '.beacon.example:4317 \\\n  --enroll-token bpt_6f2a…';
+    var prCard = el('div', { class: 'card conn' }, [
+      el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: 'Beacon probe' }), probeChip(pr.status)]),
+      el('p', { class: 'sm muted', text: 'An unmodified OpenTelemetry Collector with a Beacon config. It dials out to your cell over mTLS; nothing listens on the host. Needed for memory, disk and logs on VMs, and for everything inside UpCloud servers.' }),
+      el('div', { class: 'code', text: cmd }),
+      el('div', { class: 'code', text: 'helm install beacon-probe oci://probe.beacon.example/charts/probe --set tenant=' + (S.tenant ? S.tenant.cell : 'cell') }),
+      pr.status === 'none' ? B.Button({ variant: 'primary', label: 'I ran it, wait for probes', onClick: installProbe, disabled: az.status !== 'connected' || uc.status !== 'connected' }) :
+      pr.status === 'waiting' ? el('p', { class: 'muted', text: 'Waiting for probes to dial in… ' + pr.hosts.length + ' of 3 online.' }) :
+      el('div', { class: 'bc-row' }, pr.hosts.map(function (h) { return el('span', { class: 'bc-pill bc-pill-available', text: h + ' online' }); }))
+    ]);
+    var done = pr.status === 'online';
+    return el('div', { class: 'page' }, [stepsBar(done ? 4 : (az.status === 'connected' && uc.status === 'connected' ? 3 : 2)), el('h1', { class: 'display', text: 'Connect your clouds' }),
+      el('p', { class: 'muted', text: 'Each connection is an identity, a scope and a network path. Beacon shows exactly what it can see before it watches anything.' }),
+      el('div', { class: 'split' }, [azCard, ucCard]), prCard,
+      done ? el('div', { class: 'bc-row' }, [B.Button({ variant: 'primary', label: 'Go to findings', onClick: function () { go('findings'); } })]) : null]);
+  }
+  function connChip(s) { return s === 'connected' ? B.StatusChip({ status: 'verified', label: 'Connected' }) : s === 'validating' ? B.StatusChip({ status: 'investigating', label: 'Validating' }) : B.StatusChip({ status: 'unverified', label: 'Not connected' }); }
+  function probeChip(s) { return s === 'online' ? B.StatusChip({ status: 'verified', label: 'Online' }) : s === 'waiting' ? B.StatusChip({ status: 'investigating', label: 'Waiting' }) : B.StatusChip({ status: 'unverified', label: 'Not installed' }); }
+
+  function pageFindings() {
+    var tiles = el('div', { class: 'tiles' }, [
+      tile('Probes online', el('span', { class: 'numeral', text: S.conn.probe.hosts.length + ' / 3' }), null, 'OpAMP heartbeats'),
+      tile('Metrics per minute', el('span', { class: 'numeral', id: 'v-rate', text: '—' }), 'sp-rate', 'into the tenant cell'),
+      tile('Disk, web-01', el('span', { class: 'numeral', id: 'v-disk', text: '—' }), 'sp-disk', 'node_filesystem · threshold 90%'),
+      tile('CPU, edge-01', el('span', { class: 'numeral', id: 'v-cpu', text: '—' }), 'sp-cpu', 'hostmetrics · UpCloud')
+    ]);
+    var rows = S.findings.map(function (f) { return el('tr', { class: 'row', onClick: function () { go('inv/' + f.run); } }, [
+      el('td', null, [B.SeverityChip({ severity: f.severity })]), el('td', null, [el('div', { text: f.title }), el('div', { class: 'mono muted', text: f.id + ' · ' + f.resource })]),
+      el('td', { text: f.service }), el('td', null, [B.StatusChip({ status: f.status })]), el('td', { class: 'mono muted', text: f.age })]); });
+    var table = el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Severity' }), el('th', { text: 'Finding' }), el('th', { text: 'Service' }), el('th', { text: 'Status' }), el('th', { text: 'Age' })])]), el('tbody', null, rows)])]);
+    var banner = S.conn.probe.status !== 'online' ? el('div', { class: 'card', style: 'border-color:var(--warning)' }, [el('div', { class: 'heading', text: 'Setup is not finished' }), el('p', { class: 'sm muted', text: 'Connect both clouds and install the probe to see telemetry here.' }), el('div', { style: 'margin-top:8px' }, [B.Button({ label: 'Continue setup', onClick: function () { go('setup-connect'); } })])]) : null;
+    return el('div', { class: 'page' }, [el('div', null, [el('h1', { class: 'display', text: 'Findings' }), el('p', { class: 'muted', id: 'v-last', text: 'telemetry flowing' })]), banner, tiles, table]);
+  }
+  function tile(label, valNode, sparkId, sub) { return el('div', { class: 'tile' }, [el('span', { class: 'label', text: label }), el('div', { class: 'val' }, [valNode]), sparkId ? el('canvas', { id: sparkId, height: '36' }) : el('div', { style: 'height:36px' }), el('span', { class: 'sm muted', text: sub })]); }
+
+  function pageInvestigations() {
+    var rows = S.runs.map(function (r) { var f = find(r.finding) || {}; return el('tr', { class: 'row', onClick: function () { go('inv/' + r.id); } }, [el('td', { class: 'mono', text: r.id }), el('td', { text: f.title || r.finding }), el('td', { text: r.outcome }), el('td', { class: 'mono', text: r.duration }), el('td', { class: 'mono', text: '$' + r.cost.toFixed(2) }), el('td', { class: 'mono muted', text: r.when })]); });
+    return el('div', { class: 'page' }, [el('h1', { class: 'display', text: 'Investigations' }), el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Run' }), el('th', { text: 'Finding' }), el('th', { text: 'Outcome' }), el('th', { text: 'Duration' }), el('th', { text: 'Cost' }), el('th', { text: 'When' })])]), el('tbody', null, rows)])])]);
+  }
+  function msg(who, meta, nodes) { return el('div', { class: 'msg' }, [el('div', { class: 'who ' + (who === 'B' ? 'beacon' : who === 'S' ? '' : 'user'), text: who }), el('div', { class: 'body2' }, [el('div', { class: 'meta' }, meta.map(function (m, i) { return i === 0 ? el('b', { text: m }) : el('span', { text: m }); }))].concat(nodes))]); }
+  function pageInv(id) {
+    if (id !== 'inv-00a7') return el('div', { class: 'page' }, [el('h1', { class: 'display', text: id }), el('div', { class: 'empty', text: 'This earlier run is not scripted in the prototype. Open inv-00a7 after triggering the demo scenario.' })]);
+    var f = find('F-0142'); var st = S.scenario.step, ap = S.scenario.approved, as = S.scenario.afterStep;
+    if (!f) return el('div', { class: 'page' }, [el('div', { class: 'empty', text: 'No run yet. Use the demo bar below to trigger the disk-fill scenario.' })]);
+    var items = [];
+    items.push(msg('S', ['Signal loop', '01:57:10'], [el('p', { text: 'disk_used_percent on web-01 crossed 90% and held for 5 minutes. Responder disk-pressure-linux matched. Run inv-00a7 created with a 6-minute budget and 40 tool calls.' })]));
+    if (st >= 2) items.push(msg('B', ['Beacon', 'collecting evidence'], [el('div', { class: 'tools' }, [
+      toolLine('query_metrics node_filesystem_avail_bytes{host="web-01"} 2h', st >= 3), toolLine('tail_logs web-01 /var/log/nginx/access.log 200 lines', st >= 3), toolLine('azure_activity_log web-01 3h', st >= 3), toolLine('read_file web-01 /var/lib/logrotate/status', st >= 3), toolLine('query_metrics nginx_http_requests_total{host="web-01"} 2h', st >= 3), toolLine('azure_resource_health web-01', st >= 3)])]));
+    if (st >= 3) items.push(msg('B', ['Beacon', 'evidence'], [el('div', { class: 'tablewrap' }, [B.EvidenceTable({ rows: EVIDENCE })])]));
+    if (st >= 4) items.push(msg('B', ['Beacon', 'hypotheses'], [
+      el('div', { class: 'hyp v' }, [el('div', { class: 'heading', text: 'Likely cause: debug logging enabled by the 01:10 deploy, and logrotate stalled' }), el('p', { class: 'sm', text: 'Supported by the activity log, the access log growth rate and the logrotate status file.' })]),
+      el('div', { class: 'hyp u' }, [el('div', { class: 'heading', text: 'Considered and rejected: traffic spike' }), el('p', { class: 'sm', text: 'Request rate is flat at 310 rps across the window.' })]),
+      B.CausalChain({ steps: CHAIN })]));
+    if (st >= 5) items.push(msg('B', ['Verifier', 'deterministic check'], [el('p', { text: '4 of 4 material claims have an evidence row with a source pointer. The cause is marked Verified. Confidence is stated as Verified because every link in the chain has a pointer, not because of a model score.' })]));
+    if (st >= 5 && ap !== true && ap !== 'denied') items.push(msg('B', ['Policy', 'review mode · L3'], [el('p', { class: 'sm muted', text: 'Task logrotate-force is allowlisted for this responder. Production is in review mode, so a human approves. Preconditions passed: free space above 5%, nginx responding, no deploy in progress.' }), B.ApprovalCard(Object.assign({ canApprove: true, onApprove: approve, onDeny: deny }, APPROVAL))]));
+    if (ap === 'denied') items.push(msg('B', ['Policy', 'denied'], [el('p', { text: 'Denied by ' + S.user.name + '. F-0142 escalated to on-call with the full thread. No change was made.' })]));
+    if (ap === true) {
+      items.push(msg(initials(), [S.user.name, 'approved'], [el('p', { text: 'Approved the fix on web-01.' })]));
+      if (as >= 0) items.push(msg('B', ['Action executor', 'write identity'], [el('div', { class: 'code', text: 'az vm run-command invoke --name web-01 --command-id RunShellScript …\nstatus: ' + (as >= 1 ? 'Succeeded in 6s' : 'Running') + '\nstdout: ' + (as >= 1 ? 'rotating /var/log/nginx/access.log … done\nnginx: signal process started' : '') })]));
+      if (as >= 2) items.push(msg('B', ['Verification', 'signal loop, independent read'], [el('p', { text: 'Disk on web-01 is at 61% and falling. Access log growth is 2 MB/min. Resource Health remains Available. F-0142 is resolved.' }), B.StatRow({ items: [{ value: '3m 05s', label: 'trigger to verified' }, { value: '6', label: 'sources' }, { value: '$0.52', label: 'cost' }, 'inv-00a7'] })]));
+    }
+    var thread = el('div', { class: 'thread' }, items);
+    var head = el('div', null, [el('div', { class: 'bc-row', style: 'margin-bottom:8px' }, [B.SeverityChip({ severity: f.severity }), B.StatusChip({ status: f.status })]), el('h1', { class: 'display', text: f.title }), el('div', { style: 'margin-top:8px' }, [B.StatRow({ items: [{ value: st >= 5 ? '2m 40s' : '…', label: 'to finding' }, { value: st >= 3 ? '6' : '…', label: 'sources' }, { value: st >= 3 ? '6' : '…', label: 'evidence rows' }, 'web-01 · Shop web', 'inv-00a7'] })])]);
+    return el('div', { class: 'page' }, [head, el('div', { class: 'card lg' }, [thread]), askBox()]);
+  }
+  function initials() { return (S.user.name || 'U').slice(0, 1).toUpperCase(); }
+  function toolLine(text, done) { return el('div', { class: 't' }, [el('i', { class: done ? '' : 'run' }), el('span', { text: text })]); }
+
+  /* ask Beacon: uses the sample capability when the viewer grants it, a scripted answer otherwise */
+  var sampleNs = null, sampleTried = false;
+  function askBox() {
+    var input = el('input', { id: 'ask-input', placeholder: 'Ask Beacon about this investigation…' });
+    var out = el('div', { class: 'thread', id: 'ask-out' });
+    var form = el('form', { onSubmit: function (e) { e.preventDefault(); var q = input.value.trim(); if (!q) return; input.value = ''; out.appendChild(msg(initials(), [S.user.name], [el('p', { text: q })])); var ans = el('p', { text: 'Thinking…' }); out.appendChild(msg('B', ['Beacon'], [ans])); answer(q, ans); } }, [el('div', { class: 'ask' }, [input, B.Button({ variant: 'primary', label: 'Ask', type: 'submit' })])]);
+    return el('div', { class: 'card' }, [el('div', { class: 'label', text: 'Ask Beacon' }), el('div', { style: 'height:8px' }), out, form]);
+  }
+  function context() { return 'You are Beacon, a reliability operations agent. Answer in at most three short sentences, plainly, citing the evidence rows by their pointer when relevant. Never invent new facts. Finding F-0142 on web-01, service Shop web. Evidence: ' + EVIDENCE.map(function (e) { return e.kind + ': ' + e.claim + ' [' + e.pointer + ']'; }).join(' ') + ' Status: ' + (find('F-0142') || {}).status + '. Proposed action: ' + APPROVAL.action + ' Blast radius: ' + APPROVAL.blastRadius; }
+  function answer(q, node) {
+    getSample().then(function (s) {
+      if (s) { s(context() + '\n\nQuestion: ' + q, { onText: function (t) { node.textContent = t.text || 'Thinking…'; }, cache: false }).then(function (r) { node.textContent = r.text; }).catch(function () { node.textContent = scripted(q); }); }
+      else node.textContent = scripted(q);
+    });
+  }
+  function getSample() { if (sampleTried) return Promise.resolve(sampleNs); sampleTried = true; if (!window.claude || !window.claude.use) return Promise.resolve(null); return window.claude.use('sample').then(function (ns) { sampleNs = ns; return ns; }).catch(function () { return null; }); }
+  function scripted(q) {
+    q = q.toLowerCase();
+    if (q.indexOf('why') >= 0 || q.indexOf('cause') >= 0) return 'The 01:10 deploy set NGINX_DEBUG=1, so the access log grew about 80 MB a minute, and logrotate has not completed since 2026-10-21. Both are in the evidence rows: Activity Log · web-01 and /var/lib/logrotate/status.';
+    if (q.indexOf('replica') >= 0 || q.indexOf('scale') >= 0 || q.indexOf('resize') >= 0) return 'Adding capacity would not help. The disk is filling from logging, not from load; request rate is flat at 310 rps in nginx_http_requests_total · web-01.';
+    if (q.indexOf('risk') >= 0 || q.indexOf('safe') >= 0 || q.indexOf('downtime') >= 0) return 'The fix rotates the log and turns debug logging off, then reloads nginx without dropping connections. Nothing is deleted; about 3 GB is compressed. If it fails, nothing has changed and the finding escalates to on-call.';
+    return 'This run read six sources and every claim in the evidence table has a pointer. The cause is verified; the fix waits for an administrator unless the responder is switched to autonomous mode.';
+  }
+
+  function pageApprovals() {
+    var rows = S.approvals.map(function (a) { return el('tr', { class: 'row', onClick: function () { go('inv/' + a.run); } }, [el('td', { class: 'mono', text: a.id }), el('td', { text: a.task }), el('td', null, [B.StatusChip({ status: 'awaiting-approval' })]), el('td', { class: 'mono', text: a.level }), el('td', { class: 'mono muted', text: a.when })]); });
+    return el('div', { class: 'page' }, [el('h1', { class: 'display', text: 'Approvals' }), el('p', { class: 'muted', text: 'Every action waiting for a human. Only administrators can approve. Each row opens the investigation it came from.' }),
+      rows.length ? el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Id' }), el('th', { text: 'Task' }), el('th', { text: 'Status' }), el('th', { text: 'Level' }), el('th', { text: 'Since' })])]), el('tbody', null, rows)])]) : el('div', { class: 'empty', text: 'Nothing waiting. Beacon has not proposed any action that needs you.' })]);
+  }
+  var mappingRules = [['prometheus', 'instance="web-01:9100"', 'web-01', 'label host'], ['datadog', 'host:edge-01.example', 'edge-01', 'tag host, strip domain'], ['loki', '{job="nginx", host="web-01"}', 'web-01', 'label host'], ['azure monitor', 'resourceId … /web-01', 'web-01', 'native']];
+  function pageServices() {
+    var rows = RESOURCES.map(function (r) { return el('tr', null, [el('td', { class: 'mono', text: r.id }), el('td', { text: r.kind }), el('td', { class: 'sm muted', text: r.detail }), el('td', null, [el('select', { class: 'sm', style: 'background:var(--surface-sunken);color:var(--ink);border:1px solid var(--line-strong);border-radius:3px;padding:2px 6px' }, ['Shop web', 'Shop data', 'Edge', 'Unassigned'].map(function (s) { return el('option', { text: s, selected: s === r.service }); }))]), el('td', null, [r.probe ? el('span', { class: 'bc-pill bc-pill-available', text: 'probe online' }) : el('span', { class: 'bc-pill bc-pill-none', text: 'agentless' })])]); });
+    var map = mappingRules.map(function (m) { return el('tr', null, [el('td', { text: m[0] }), el('td', { class: 'mono', text: m[1] }), el('td', { class: 'mono', text: m[2] }), el('td', { class: 'sm muted', text: m[3] })]); });
+    return el('div', { class: 'page' }, [el('h1', { class: 'display', text: 'Services and inventory' }), el('p', { class: 'muted', text: 'Group discovered resources into services and set who owns them. Criticality decides who gets paged and which responders may act.' }),
+      el('div', { class: 'split' }, [svc('Shop web', 'Critical', 'platform@shop.example', 3), svc('Shop data', 'Critical', 'data@shop.example', 1), svc('Edge', 'Standard', 'ops@shop.example', 1)]),
+      el('div', null, [el('h2', { class: 'title', text: 'Resources' }), el('div', { style: 'height:8px' }), el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Resource' }), el('th', { text: 'Kind' }), el('th', { text: 'Detail' }), el('th', { text: 'Service' }), el('th', { text: 'Telemetry' })])]), el('tbody', null, rows)])])]),
+      el('div', null, [el('h2', { class: 'title', text: 'Mapping rules' }), el('p', { class: 'sm muted', text: 'How a label or tag in a telemetry source resolves to a resource here. Without a rule, a finding cannot say which machine it is about.' }), el('div', { style: 'height:8px' }), el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Source' }), el('th', { text: 'Label or tag' }), el('th', { text: 'Resource' }), el('th', { text: 'Rule' })])]), el('tbody', null, map)])])])]);
+  }
+  function svc(name, crit, owner, n) { return el('div', { class: 'card' }, [el('div', { class: 'bc-row', style: 'justify-content:space-between' }, [el('span', { class: 'heading', text: name }), B.SeverityChip({ severity: crit === 'Critical' ? 'critical' : 'info', label: crit })]), el('dl', { class: 'kv', style: 'margin-top:8px' }, [el('dt', { text: 'Owner' }), el('dd', { class: 'mono', text: owner }), el('dt', { text: 'Resources' }), el('dd', { text: String(n) }), el('dt', { text: 'SLO' }), el('dd', { text: name === 'Shop web' ? '99.9% availability, 30d' : 'none yet' })])]); }
+  function pageConnections() {
+    var az = S.conn.azure, uc = S.conn.upcloud, pr = S.conn.probe;
+    function card(name, c, caps) { return el('div', { class: 'card conn' }, [el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: name }), connChip(c.status)]), c.status === 'connected' ? el('dl', { class: 'kv' }, [el('dt', { text: 'Scope' }), el('dd', { text: c.scope }), el('dt', { text: 'Identity' }), el('dd', { text: c.identity }), el('dt', { text: 'Last validated' }), el('dd', { class: 'mono', text: new Date(c.validated).toLocaleTimeString() }), el('dt', { text: 'Egress' }), el('dd', { class: 'mono', text: S.tenant.egressIp + ' (static)' })]) : el('p', { class: 'muted', text: 'Not connected.' }), c.status === 'connected' ? B.CapabilityList({ items: caps }) : null]); }
+    var probes = el('div', { class: 'card conn' }, [el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: 'Probes' }), probeChip(pr.status)]), B.CapabilityList({ items: ['web-01', 'edge-01', 'aks-shop'].map(function (h) { return { name: h, detail: pr.hosts.indexOf(h) >= 0 ? 'OpAMP · heartbeat 12s ago · config v3' : 'no heartbeat', state: pr.hosts.indexOf(h) >= 0 ? 'available' : 'none' }; }) })]);
+    return el('div', { class: 'page' }, [el('h1', { class: 'display', text: 'Connections' }), el('p', { class: 'muted', text: 'What each connection lets Beacon see and do. Missing permission means the provider offers it and the identity lacks it. Not offered means the provider has no such signal.' }), el('div', { class: 'split' }, [card('Microsoft Azure', az, CAPS.azure), card('UpCloud', uc, CAPS.upcloud)]), probes, el('div', { class: 'bc-row' }, [B.Button({ label: 'Add connection', onClick: function () { toast('Prototype: new connections are added in setup.'); } }), B.Button({ label: 'Add telemetry source (Prometheus, Datadog, Loki)', onClick: function () { toast('Prototype: telemetry sources are a later screen.'); } })])]);
+  }
+  function pageResponders() {
+    var rows = RESPONDERS.map(function (r) { return el('tr', null, [el('td', { class: 'mono', text: r.id }), el('td', { class: 'sm', text: r.signal }), el('td', { class: 'sm muted', text: r.scope }), el('td', null, [el('div', { class: 'segs' }, [el('button', { class: r.mode === 'Review' ? 'on' : '', text: 'Review', onClick: function () { r.mode = 'Review'; render(); } }), el('button', { class: r.mode === 'Autonomous' ? 'on' : '', text: 'Autonomous', onClick: function () { r.mode = 'Autonomous'; toast(r.id + ' set to autonomous. Beacon will act and report.'); render(); } })])]), el('td', { class: 'mono', text: r.level }), el('td', null, [el('div', { class: 'policy' }, r.tools.map(function (t) { return el('span', { class: t[1], text: t[0] + ' · ' + t[1] }); }))])]); });
+    return el('div', { class: 'page' }, [el('h1', { class: 'display', text: 'Responders' }), el('p', { class: 'muted', text: 'A responder binds a signal to a playbook, the tools it may use, the policy on each tool, and the run mode. Start every responder in review. Promote the ones you always approve.' }),
+      el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Responder' }), el('th', { text: 'Signal' }), el('th', { text: 'Scope' }), el('th', { text: 'Run mode' }), el('th', { text: 'Level' }), el('th', { text: 'Tool policy' })])]), el('tbody', null, rows)])]),
+      el('div', { class: 'card' }, [el('div', { class: 'heading', text: 'Autonomy levels' }), el('p', { class: 'sm muted', text: 'L0 observe · L1 investigate · L2 recommend · L3 execute after a human approves the specific action · L4 execute allowlisted low-risk actions automatically when preconditions pass, then verify and report.' })])]);
+  }
+  function pageConsumption() {
+    var spent = S.runs.reduce(function (a, r) { return a + r.cost; }, 0); var cap = 60;
+    var byType = [['Investigations', spent * 0.82], ['Scheduled checks', spent * 0.12], ['Ask Beacon', spent * 0.06]];
+    var rows = S.runs.map(function (r) { return el('tr', null, [el('td', { class: 'mono', text: r.id }), el('td', { text: (find(r.finding) || {}).title || r.finding }), el('td', { class: 'mono', text: r.tokens + ' tokens' }), el('td', { class: 'mono', text: r.duration }), el('td', { class: 'mono', text: '$' + r.cost.toFixed(2) }), el('td', { text: r.outcome })]); });
+    return el('div', { class: 'page' }, [el('h1', { class: 'display', text: 'Consumption' }), el('p', { class: 'muted', text: 'What Beacon spent on your behalf this month, by thread and by run. The cap stops investigations, never the collector loop.' }),
+      el('div', { class: 'split' }, [
+        el('div', { class: 'card' }, [el('span', { class: 'label', text: 'Monthly cap' }), el('div', { class: 'val', style: 'margin:4px 0 8px' }, [el('span', { class: 'numeral', text: '$' + spent.toFixed(2) }), el('span', { class: 'muted', text: ' of $' + cap })]), el('div', { class: 'bar' }, [el('i', { style: 'width:' + Math.min(100, spent / cap * 100).toFixed(1) + '%' })]), el('p', { class: 'sm muted', style: 'margin-top:8px', text: 'Collector and signal loops: no model cost. 3 runs this month.' })]),
+        el('div', { class: 'card' }, [el('span', { class: 'label', text: 'By thread type' })].concat(byType.map(function (b) { return el('div', { style: 'margin-top:8px' }, [el('div', { class: 'bc-row', style: 'justify-content:space-between' }, [el('span', { class: 'sm', text: b[0] }), el('span', { class: 'mono', text: '$' + b[1].toFixed(2) })]), el('div', { class: 'bar' }, [el('i', { style: 'width:' + (spent ? b[1] / spent * 100 : 0).toFixed(1) + '%' })])]); }))),
+        el('div', { class: 'card' }, [el('span', { class: 'label', text: 'Per run' }), el('div', { class: 'val', style: 'margin-top:4px' }, [el('span', { class: 'numeral', text: '$' + (S.runs.length ? spent / S.runs.length : 0).toFixed(2) })]), el('p', { class: 'sm muted', text: 'average, Claude Opus 5.5, adaptive thinking' })])
+      ]),
+      el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Run' }), el('th', { text: 'Finding' }), el('th', { text: 'Tokens' }), el('th', { text: 'Duration' }), el('th', { text: 'Cost' }), el('th', { text: 'Outcome' })])]), el('tbody', null, rows)])])]);
+  }
+
+  /* ---------- demo bar ---------- */
+  function demobar() {
+    var bar = document.getElementById('demobar'); bar.innerHTML = '';
+    var canTrigger = S.user && S.tenant && S.conn.probe.status === 'online' && !S.scenario.id;
+    bar.appendChild(el('span', { class: 'label', text: 'Demo controls' }));
+    bar.appendChild(el('span', { text: S.scenario.id ? (S.scenario.done ? 'Scenario complete.' : S.scenario.approved === 'denied' ? 'Scenario ended: denied.' : 'Scenario running: disk fill on web-01.') : (canTrigger ? 'Ready.' : 'Finish sign-in, tenant and connections to enable the scenario.') }));
+    bar.appendChild(B.Button({ variant: 'primary', label: 'Trigger: fill the disk on web-01', disabled: !canTrigger, onClick: function () { startScenario(); go('findings'); render(); } }));
+    bar.appendChild(B.Button({ label: 'Reset prototype', onClick: reset }));
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    var r = route(); var app = document.getElementById('app'); var node, crumb = '', aside = false;
+    if (r === 'login') node = pageLogin();
+    else if (r === 'setup-tenant') node = el('div', { class: 'content' }, [pageSetupTenant()]);
+    else if (r === 'setup-connect') node = el('div', { class: 'content' }, [pageSetupConnect()]);
+    else {
+      var parts = r.split('/');
+      if (parts[0] === 'findings') { node = pageFindings(); crumb = 'Findings'; aside = true; }
+      else if (parts[0] === 'investigations') { node = pageInvestigations(); crumb = 'Investigations'; }
+      else if (parts[0] === 'inv') { node = pageInv(parts[1]); crumb = 'Investigations / ' + parts[1]; aside = true; }
+      else if (parts[0] === 'approvals') { node = pageApprovals(); crumb = 'Approvals'; aside = true; }
+      else if (parts[0] === 'services') { node = pageServices(); crumb = 'Services'; }
+      else if (parts[0] === 'connections') { node = pageConnections(); crumb = 'Connections'; }
+      else if (parts[0] === 'responders') { node = pageResponders(); crumb = 'Responders'; }
+      else if (parts[0] === 'consumption') { node = pageConsumption(); crumb = 'Consumption'; }
+      else { node = pageFindings(); crumb = 'Findings'; aside = true; }
+    }
+    var out = (r === 'login' || r.indexOf('setup') === 0) ? (r === 'login' ? node : el('div', { class: 'app', style: 'grid-template-columns:1fr' }, [el('div', { class: 'main' }, [el('div', { class: 'topbar' }, [el('div', { class: 'brand', style: 'padding:0' }, [el('i'), 'Beacon']), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: S.user ? S.user.email : '' })]), el('div', { class: 'body noaside' }, [node])])])) : shell(node, { crumb: crumb, aside: aside });
+    var scrollEl = app.querySelector('.content'); var sc = scrollEl ? scrollEl.scrollTop : 0;
+    app.replaceWith(out); out.id = 'app';
+    var ns = out.querySelector('.content'); if (ns) ns.scrollTop = sc;
+    drawTiles(); demobar();
+  }
+  if (!location.hash) location.hash = S.user ? '#findings' : '#login';
+  render(); resume();
+})();
+</script>

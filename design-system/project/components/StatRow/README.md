@@ -1,0 +1,1 @@
+The line under a finding headline that says how the finding was reached. Pass `items`: strings, or objects with `value` and `label` where the value is emphasised. Three to five items; time to finding, sources read, evidence rows and the run id are the usual set. The row is monospace and tabular so it lines up across findings.

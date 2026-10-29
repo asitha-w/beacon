@@ -1,0 +1,56 @@
+/* Beacon components. Every colour, size and radius is a token from tokens.css. */
+.bc-btn { display:inline-flex; align-items:center; gap:var(--space-2); font-family:var(--font-sans); font-size:13px; line-height:19px; font-weight:500; padding:6px var(--space-3); border-radius:var(--radius-md); border:1px solid transparent; cursor:pointer; background:transparent; color:var(--ink); }
+.bc-btn-primary { background:var(--beam); color:var(--on-beam); border-color:var(--beam); }
+.bc-btn-quiet { border-color:var(--line); color:var(--ink); }
+.bc-btn-quiet:hover { border-color:var(--line-strong); }
+.bc-btn-danger { border-color:var(--critical); color:var(--critical); }
+.bc-btn-danger:hover { background:var(--critical-soft); }
+.bc-btn:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.bc-btn[disabled] { color:var(--ink-faint); cursor:default; background:transparent; border-color:var(--line); }
+.bc-chip { display:inline-flex; align-items:center; gap:var(--space-1); font-family:var(--font-sans); font-size:11px; line-height:16px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; padding:2px var(--space-2); border-radius:var(--radius-sm); }
+.bc-chip::before { content:""; width:8px; height:8px; border-radius:var(--radius-pill); background:currentColor; }
+.bc-chip-critical { color:var(--critical); background:var(--critical-soft); }
+.bc-chip-warning { color:var(--warning); background:var(--warning-soft); }
+.bc-chip-info { color:var(--info); background:var(--info-soft); }
+.bc-chip-ok { color:var(--ok); background:var(--ok-soft); }
+.bc-chip-approve { color:var(--approve); background:var(--approve-soft); }
+.bc-chip-neutral { color:var(--ink-muted); background:var(--surface-sunken); }
+.bc-stat { display:flex; flex-wrap:wrap; gap:var(--space-2); font-family:var(--font-mono); font-size:12.5px; line-height:18px; color:var(--ink-muted); font-variant-numeric:tabular-nums; }
+.bc-stat span + span::before { content:"·"; margin-right:var(--space-2); color:var(--ink-faint); }
+.bc-stat b { color:var(--ink); font-weight:500; }
+.bc-evidence { width:100%; border-collapse:collapse; font-family:var(--font-sans); font-size:13px; line-height:19px; color:var(--ink); }
+.bc-evidence th { text-align:left; font-size:11px; line-height:16px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-muted); padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--line); background:var(--surface-raised); }
+.bc-evidence td { padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--line); vertical-align:top; }
+.bc-evidence tr:last-child td { border-bottom:0; }
+.bc-evidence tr:hover td { background:var(--beam-soft); }
+.bc-evidence .bc-kind { font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-muted); white-space:nowrap; }
+.bc-evidence .bc-ptr { font-family:var(--font-mono); font-size:12.5px; color:var(--beam); white-space:nowrap; text-align:right; }
+.bc-evidence .bc-ptr a { color:inherit; text-decoration:none; border-bottom:1px solid var(--line-strong); }
+.bc-evidence .bc-ptr a:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.bc-chain { display:flex; align-items:stretch; gap:var(--space-2); overflow-x:auto; padding:2px; }
+.bc-chain-step { position:relative; flex:0 0 auto; min-width:140px; max-width:200px; padding:var(--space-2) var(--space-3); border:1px solid var(--line-strong); border-radius:var(--radius-md); background:var(--surface-raised); font-family:var(--font-sans); font-size:13px; line-height:19px; color:var(--ink); }
+.bc-chain-step time { display:block; font-family:var(--font-mono); font-size:11px; line-height:16px; color:var(--ink-muted); margin-bottom:2px; }
+.bc-chain-arrow { align-self:center; flex:0 0 auto; width:16px; height:16px; color:var(--line-strong); }
+.bc-chain-step.bc-sev-critical { border-color:var(--critical); background:var(--critical-soft); }
+.bc-chain-step.bc-sev-warning { border-color:var(--warning); background:var(--warning-soft); }
+.bc-chain-step.bc-sev-info { border-color:var(--info); background:var(--info-soft); }
+.bc-approval { border:1px solid var(--approve); border-radius:var(--radius-lg); background:var(--surface-raised); padding:var(--space-4); font-family:var(--font-sans); color:var(--ink); max-width:560px; }
+.bc-approval h3 { margin:0 0 var(--space-2); font-size:15px; line-height:21px; font-weight:600; }
+.bc-approval p { margin:0; font-size:14px; line-height:21px; }
+.bc-approval .bc-eyebrow { display:block; font-size:11px; line-height:16px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-muted); margin:var(--space-3) 0 2px; }
+.bc-approval .bc-action { font-family:var(--font-mono); font-size:12.5px; line-height:18px; background:var(--surface-sunken); padding:var(--space-2) var(--space-3); border-radius:var(--radius-sm); }
+.bc-approval .bc-blast { color:var(--ink); }
+.bc-approval .bc-buttons { display:flex; gap:var(--space-2); margin-top:var(--space-4); align-items:center; }
+.bc-approval .bc-who { margin-left:auto; font-size:13px; color:var(--ink-muted); }
+.bc-caps { list-style:none; margin:0; padding:0; font-family:var(--font-sans); font-size:13px; line-height:19px; color:var(--ink); border:1px solid var(--line); border-radius:var(--radius-md); background:var(--surface-raised); max-width:520px; }
+.bc-caps li { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--line); }
+.bc-caps li:last-child { border-bottom:0; }
+.bc-caps .bc-cap-name { flex:1 1 auto; min-width:0; }
+.bc-caps .bc-cap-detail { font-family:var(--font-mono); font-size:12.5px; color:var(--ink-muted); }
+.bc-pill { display:inline-flex; align-items:center; gap:var(--space-1); font-size:11px; line-height:16px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; padding:2px var(--space-2); border-radius:var(--radius-pill); white-space:nowrap; }
+.bc-pill::before { content:""; width:8px; height:8px; border-radius:var(--radius-pill); background:currentColor; }
+.bc-pill-available { color:var(--ok); background:var(--ok-soft); }
+.bc-pill-missing { color:var(--warning); background:var(--warning-soft); }
+.bc-pill-none { color:var(--ink-muted); background:var(--surface-sunken); }
+.bc-row { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; }
+.bc-stack { display:grid; gap:var(--space-3); }

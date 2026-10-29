@@ -1,0 +1,15 @@
+<!-- @dsCard group="Findings" height=180 -->
+<!doctype html>
+<html><head><meta charset="utf-8"><title>EvidenceTable</title></head>
+<body>
+<div id="root" style="max-width:720px"></div>
+<script>
+  var B = window.Beacon;
+  document.getElementById('root').appendChild(B.EvidenceTable({ rows: [
+    { kind: 'metric', claim: 'Disk on / is 94% used, up from 71% at 01:10.', pointer: 'node_filesystem_avail_bytes · web-01', href: '#' },
+    { kind: 'log', claim: 'nginx access log grew 3.1 GB in 40 minutes.', pointer: '/var/log/nginx/access.log · filelog', href: '#' },
+    { kind: 'resource', claim: 'Server state is started. No provider events in the window.', pointer: 'upcloud server 00a7…c3', href: '#' },
+    { kind: 'config', claim: 'logrotate has not run since 2026-10-21.', pointer: '/var/lib/logrotate/status', href: '#' }
+  ] }));
+</script>
+</body></html>

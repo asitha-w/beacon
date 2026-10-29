@@ -1,0 +1,332 @@
+<title>Beacon Traffic Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one reading column, the traffic diagram full-width, tables in their own scroll containers. */
+  :root {
+    --bg: #f7f8f6;
+    --surface: #ffffff;
+    --fg: #1d2420;
+    --muted: #5d6762;
+    --line: #cfd6d1;
+    --accent: #0b6e6e;      /* probe dial-home and anything Beacon-owned */
+    --inbound: #b4560a;     /* the one inbound path */
+    --soft: #e4efec;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151a18; --surface: #1d2422; --fg: #e6ebe8; --muted: #9aa6a0;
+      --line: #35403b; --accent: #4fc1bd; --inbound: #e8964a; --soft: #22312e;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151a18; --surface: #1d2422; --fg: #e6ebe8; --muted: #9aa6a0;
+    --line: #35403b; --accent: #4fc1bd; --inbound: #e8964a; --soft: #22312e;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font-body);
+    font-size: 15px; line-height: 1.55;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 32px 64px;
+  }
+  main { max-width: 1040px; margin: 0 auto; display: grid; gap: 36px; }
+  header { display: grid; gap: 8px; max-width: 68ch; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-size: 30px; font-weight: 600; line-height: 1.15; margin: 0; text-wrap: balance; }
+  h2 { font-size: 20px; font-weight: 600; margin: 0 0 10px; text-wrap: balance; }
+  p { margin: 0; max-width: 68ch; }
+  p + p { margin-top: 10px; }
+  .lead { font-size: 17px; }
+  figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; overflow-x: auto; }
+  figure svg { display: block; width: 100%; max-width: 100%; height: auto; min-width: 720px; font-family: var(--font-body); }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; max-width: 80ch; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 26px; height: 0; border-top: 2px solid currentColor; }
+  .legend i.acc { border-color: var(--accent); }
+  .legend i.inb { border-color: var(--inbound); }
+  .legend i.dash { border-top-style: dashed; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--soft); }
+  tr:last-child td { border-bottom: 0; }
+  td.n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+  code { font-family: var(--font-mono); font-size: 13px; background: var(--soft); padding: 1px 5px; border-radius: 3px; }
+  .dir { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+  .dir.out { color: var(--accent); }
+  .dir.in { color: var(--inbound); }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; min-width: 0; }
+  .card h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+  .card p { font-size: 14px; }
+  .card ul { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
+  .card li + li { margin-top: 4px; }
+  .verdict { border-left: 3px solid var(--accent); padding-left: 14px; }
+  svg text { fill: var(--fg); font-size: 12px; }
+  svg text.small { font-size: 11px; fill: var(--muted); }
+  svg text.h { font-size: 13px; font-weight: 600; }
+  svg text.n { font-family: var(--font-mono); font-size: 11px; font-weight: 500; }
+  svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1; }
+  svg .zone { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 5 4; }
+  svg .zone.beacon { fill: var(--soft); stroke: var(--accent); stroke-dasharray: none; }
+  svg .flow { fill: none; stroke: currentColor; stroke-width: 1.6; }
+  svg .flow.acc { stroke: var(--accent); }
+  svg .flow.inb { stroke: var(--inbound); }
+  svg .flow.none { stroke: var(--muted); stroke-dasharray: 4 4; }
+  svg .badge { fill: var(--surface); stroke: var(--line); }
+  svg .badge.acc { stroke: var(--accent); }
+  svg .badge.inb { stroke: var(--inbound); }
+  svg .lbl { fill: var(--surface); stroke: none; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">Beacon · PoV architecture note</div>
+    <h1>Every connection to a tenant estate, and who dials whom</h1>
+    <p class="lead">Nine traffic paths exist between Beacon and a customer's Azure and UpCloud estate. Eight are outbound from the side that owns the private network. One is inbound to Beacon, and it is a signed webhook. No VNet peering, no Private Link, no inbound port into the customer.</p>
+  </header>
+
+  <section>
+    <figure>
+      <svg viewBox="0 0 1000 640" role="img" aria-label="Beacon control plane and one tenant cell on the left; the customer's provider APIs, alert source, Kubernetes clusters and VMs on the right. Arrows show that Beacon reaches provider APIs outbound, probes inside clusters and VMs dial out to the cell, and only alert webhooks travel inbound to Beacon.">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arr-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+          <marker id="arr-inb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--inbound)"/>
+          </marker>
+        </defs>
+
+        <!-- Beacon side -->
+        <rect class="zone beacon" x="20" y="20" width="330" height="600" rx="6"/>
+        <text class="h" x="36" y="44">Beacon (our side)</text>
+
+        <rect class="box" x="36" y="60" width="298" height="118" rx="4"/>
+        <text class="h" x="48" y="82">Control plane, shared</text>
+        <text class="small" x="48" y="102">Console and API · Postgres · Policy engine</text>
+        <text class="small" x="48" y="118">Task registry · Scheduler</text>
+        <rect class="box" x="48" y="132" width="274" height="34" rx="3"/>
+        <text x="60" y="154">Webhook ingress  <tspan class="small">signed, per tenant</tspan></text>
+
+        <rect class="box" x="36" y="200" width="298" height="400" rx="4"/>
+        <text class="h" x="48" y="222">Tenant cell, one per customer</text>
+        <text class="small" x="48" y="240">own network · own credentials · egress allowlist</text>
+
+        <rect class="box" x="48" y="256" width="274" height="56" rx="3"/>
+        <text x="60" y="276">Collector loop</text>
+        <text class="small" x="60" y="294">discovery · signal · trigger, read identity</text>
+
+        <rect class="box" x="48" y="324" width="274" height="56" rx="3"/>
+        <text x="60" y="344">Agent worker</text>
+        <text class="small" x="60" y="362">read-only tools, no cloud creds in prompt</text>
+
+        <rect class="box" x="48" y="392" width="274" height="72" rx="3"/>
+        <text x="60" y="412">Probe gateway</text>
+        <text class="small" x="60" y="430">OTLP ingest  ·  OpAMP server</text>
+        <text class="small" x="60" y="446">mTLS, per-tenant certificate</text>
+
+        <rect class="box" x="48" y="476" width="274" height="56" rx="3"/>
+        <text x="60" y="496">Action executor</text>
+        <text class="small" x="60" y="514">separate write identity, policy-gated</text>
+
+        <rect class="box" x="48" y="544" width="274" height="42" rx="3"/>
+        <text x="60" y="570">Model gateway  <tspan class="small">outbound to LLM provider</tspan></text>
+
+        <!-- Customer side -->
+        <rect class="zone" x="520" y="20" width="460" height="600" rx="6"/>
+        <text class="h" x="536" y="44">Customer estate</text>
+
+        <rect class="box" x="536" y="60" width="428" height="150" rx="4"/>
+        <text class="h" x="548" y="82">Provider control-plane APIs  <tspan class="small">public TLS endpoints</tspan></text>
+        <rect class="box" x="548" y="96" width="200" height="100" rx="3"/>
+        <text x="558" y="116">Azure subscription</text>
+        <text class="small" x="558" y="134">ARM · Resource Graph</text>
+        <text class="small" x="558" y="150">Monitor metrics · Resource Health</text>
+        <text class="small" x="558" y="166">Activity Log · Log Analytics</text>
+        <text class="small" x="558" y="186">identity: Entra app, RBAC on subscription</text>
+        <rect class="box" x="760" y="96" width="192" height="100" rx="3"/>
+        <text x="770" y="116">UpCloud account</text>
+        <text class="small" x="770" y="134">servers: state only</text>
+        <text class="small" x="770" y="150">managed DB metrics · LB metrics</text>
+        <text class="small" x="770" y="166">managed Kubernetes</text>
+        <text class="small" x="770" y="186">identity: sub-account API token</text>
+
+        <rect class="box" x="536" y="230" width="428" height="52" rx="4"/>
+        <text x="548" y="252">Azure Monitor alert rule → action group</text>
+        <text class="small" x="548" y="270">customer-configured, fires on their thresholds</text>
+
+        <rect class="box" x="536" y="304" width="428" height="296" rx="4"/>
+        <text class="h" x="548" y="326">Workloads  <tspan class="small">private networks, no inbound path</tspan></text>
+
+        <rect class="box" x="548" y="342" width="404" height="118" rx="3"/>
+        <text x="558" y="362">Kubernetes cluster  <tspan class="small">AKS or UpCloud managed</tspan></text>
+        <rect class="box" x="558" y="374" width="186" height="74" rx="3"/>
+        <text x="568" y="394">API server</text>
+        <text class="small" x="568" y="412">read-only ClusterRole</text>
+        <text class="small" x="568" y="428">write role, separate identity</text>
+        <rect class="box" x="756" y="374" width="186" height="74" rx="3"/>
+        <text x="766" y="394">Beacon probe</text>
+        <text class="small" x="766" y="412">OTel DaemonSet: node, pods, logs</text>
+        <text class="small" x="766" y="428">OTel Deployment: cluster, events</text>
+
+        <rect class="box" x="548" y="476" width="404" height="110" rx="3"/>
+        <text x="558" y="496">Virtual machines  <tspan class="small">Azure VM or UpCloud server</tspan></text>
+        <rect class="box" x="558" y="508" width="186" height="66" rx="3"/>
+        <text x="568" y="528">Guest OS</text>
+        <text class="small" x="568" y="546">Azure: Run Command via ARM</text>
+        <text class="small" x="568" y="562">UpCloud: power ops only</text>
+        <rect class="box" x="756" y="508" width="186" height="66" rx="3"/>
+        <text x="766" y="528">Beacon probe</text>
+        <text class="small" x="766" y="546">OTel Collector: hostmetrics,</text>
+        <text class="small" x="766" y="562">filelog, process</text>
+
+        <!-- Flows: Beacon -> provider APIs (read) -->
+        <path class="flow" d="M322,284 C420,284 430,146 536,146" marker-end="url(#arr)"/>
+        <rect class="badge" x="372" y="253" width="20" height="18" rx="9"/><text class="n" x="382" y="266" text-anchor="middle">1</text>
+
+        <!-- Flow 2: action executor -> provider APIs (write) -->
+        <path class="flow" d="M322,504 C470,504 470,186 536,176" marker-end="url(#arr)"/>
+        <rect class="badge" x="452" y="330" width="20" height="18" rx="9"/><text class="n" x="462" y="343" text-anchor="middle">2</text>
+
+        <!-- Flow 3: alert webhook inbound -->
+        <path class="flow inb" d="M536,256 C440,256 430,149 334,149" marker-end="url(#arr-inb)"/>
+        <rect class="badge inb" x="382" y="157" width="20" height="18" rx="9"/><text class="n" x="392" y="170" text-anchor="middle">3</text>
+
+        <!-- Flow 4: collector loop / agent -> k8s API server (read) -->
+        <path class="flow" d="M322,352 C440,352 450,412 558,412" marker-end="url(#arr)"/>
+        <rect class="badge" x="412" y="366" width="20" height="18" rx="9"/><text class="n" x="422" y="379" text-anchor="middle">4</text>
+
+        <!-- Flow 5: probe (k8s) -> probe gateway, outbound from customer -->
+        <path class="flow acc" d="M756,436 C600,436 520,428 322,428" marker-end="url(#arr-acc)"/>
+        <rect class="badge acc" x="470" y="418" width="20" height="18" rx="9"/><text class="n" x="480" y="431" text-anchor="middle">5</text>
+
+        <!-- Flow 6: probe (VM) -> probe gateway -->
+        <path class="flow acc" d="M756,560 C600,560 480,448 322,440" marker-end="url(#arr-acc)"/>
+        <rect class="badge acc" x="470" y="514" width="20" height="18" rx="9"/><text class="n" x="480" y="527" text-anchor="middle">6</text>
+
+        <!-- Flow 7: action executor -> guest OS via provider API (Run Command), drawn as via flow 2 -->
+        <path class="flow" d="M322,520 C440,520 470,536 558,536" marker-end="url(#arr)"/>
+        <rect class="badge" x="412" y="536" width="20" height="18" rx="9"/><text class="n" x="422" y="549" text-anchor="middle">7</text>
+
+        <!-- Flow 8: model gateway outbound -->
+        <path class="flow" d="M322,566 C380,566 380,600 420,600" marker-end="url(#arr)"/>
+        <text class="small" x="426" y="604">8 · LLM provider</text>
+
+        <!-- Flow 9: notifications outbound from control plane -->
+        <text class="small" x="36" y="192">9 · email, Slack, webhook out to customer</text>
+
+        <!-- Not needed -->
+        <path class="flow none" d="M352,52 L518,52"/>
+        <text class="small" x="435" y="40" text-anchor="middle">VNet peering / Private Link</text>
+        <text class="small" x="435" y="68" text-anchor="middle">not built for the PoV</text>
+      </svg>
+      <div class="legend">
+        <span><i></i>Beacon dials out, read or write identity</span>
+        <span><i class="acc"></i>Customer-side probe dials out to the cell</span>
+        <span><i class="inb"></i>Inbound to Beacon, signed webhook</span>
+        <span><i class="dash"></i>Network path we do not build</span>
+      </div>
+      <figcaption>Figure 1. Traffic between one tenant cell and the customer estate. Numbers match the table below. Arrows point in the direction the TCP connection is opened, which is the direction a firewall rule has to allow.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>The nine paths</h2>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>From → to</th><th>Opened by</th><th>Protocol</th><th>Identity and scope</th><th>Carries</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="n">1</td><td>Collector loop → Azure and UpCloud APIs</td><td><span class="dir out">Beacon → out</span></td><td>HTTPS</td><td>Azure: Entra app with Reader at subscription scope, federated credential, no secret. UpCloud: sub-account token with read permissions</td><td>Discovery, state, platform metrics, Resource Health, Activity Log, Log Analytics queries, managed DB metrics</td></tr>
+          <tr><td class="n">2</td><td>Action executor → Azure and UpCloud APIs</td><td><span class="dir out">Beacon → out</span></td><td>HTTPS</td><td>A second Entra app or role with only the task's write permissions. UpCloud: a second token. Never the read identity</td><td>Restart, scale, resize, power operations. Level 3 and 4 only</td></tr>
+          <tr><td class="n">3</td><td>Azure action group → Beacon webhook ingress</td><td><span class="dir in">Customer → in</span></td><td>HTTPS POST</td><td>Per-tenant URL with a secret, payload validated, treated as a hint that shortens the next poll</td><td>Alert fired and resolved events. The only inbound path</td></tr>
+          <tr><td class="n">4</td><td>Collector loop and agent tools → Kubernetes API server</td><td><span class="dir out">Beacon → out</span></td><td>HTTPS, watch</td><td>AKS: Entra identity bound to a read-only ClusterRole, authorized IP range set to the cell's egress IP. UpCloud: kubeconfig from the API, same ClusterRole</td><td>Pods, events, conditions, rollouts, tailed logs, metrics server. Only when the API server is reachable</td></tr>
+          <tr><td class="n">5</td><td>Cluster probe → probe gateway</td><td><span class="dir out">Customer → out</span></td><td>OTLP gRPC plus OpAMP WebSocket, mTLS</td><td>Per-tenant client certificate issued at install. OpAMP pushes config and reads health</td><td>Node and pod metrics, container logs, cluster state and events. Works for private clusters with no path 4</td></tr>
+          <tr><td class="n">6</td><td>VM probe → probe gateway</td><td><span class="dir out">Customer → out</span></td><td>OTLP gRPC plus OpAMP WebSocket, mTLS</td><td>Same certificate scheme as 5</td><td>Memory, disk, processes, logs. The only way to see inside an UpCloud server</td></tr>
+          <tr><td class="n">7</td><td>Action executor → guest OS</td><td><span class="dir out">Beacon → out</span></td><td>HTTPS to ARM, which relays to the VM agent</td><td>Azure Run Command permission on the write identity. No equivalent on UpCloud</td><td>One-off in-guest fixes. Out of PoV scope, shown so the path is designed, not improvised</td></tr>
+          <tr><td class="n">8</td><td>Model gateway → LLM provider</td><td><span class="dir out">Beacon → out</span></td><td>HTTPS</td><td>Beacon's own key per tenant for cost attribution</td><td>Investigation prompts with evidence windows. No credentials, no raw secrets</td></tr>
+          <tr><td class="n">9</td><td>Control plane → customer notification targets</td><td><span class="dir out">Beacon → out</span></td><td>SMTP or HTTPS</td><td>Customer-supplied endpoint or address</td><td>Findings, approval requests, escalations</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Should a Connection be subscription-level?</h2>
+    <div class="verdict">
+      <p>Yes for Azure, with the subscription as the default unit and resource group as an optional narrower scope. Account or sub-account for UpCloud. But a Connection is not one thing. Model it as three fields that are decided independently, because that is what makes the MongoDB Atlas comparison stop being confusing.</p>
+    </div>
+    <div class="cols" style="margin-top:16px">
+      <div class="card">
+        <h3>Identity</h3>
+        <p>Who Beacon is when it calls the provider.</p>
+        <ul>
+          <li>Azure: one multi-tenant Entra application registered by Beacon. The customer grants admin consent, which creates a service principal in their tenant. Authenticate with workload identity federation from the cell, so there is no client secret to store or rotate.</li>
+          <li>UpCloud: the customer creates a sub-account with restricted permissions and issues an API token. Stored in the cell's secret store only.</li>
+          <li>Read and write are always two identities, on both providers.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Scope</h3>
+        <p>What that identity is allowed to see.</p>
+        <ul>
+          <li>Azure: a role assignment of Reader on the subscription. Resource Graph and Monitor then work across everything in it. Resource group scope is allowed for a cautious pilot. Management group later, for the MSP segment.</li>
+          <li>UpCloud: permissions on the sub-account, per resource type and optionally per resource.</li>
+          <li>One tenant holds many Connections. Multiple subscriptions is the normal case, not the edge case.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Network path</h3>
+        <p>How packets get there. This is the field Atlas peering lives in.</p>
+        <ul>
+          <li>Control-plane APIs: public TLS endpoints. Identity plus scope is the whole security model. No peering.</li>
+          <li>Workloads: the probe dials out. Beacon never opens a connection into a VNet.</li>
+          <li>Private API servers or Log Analytics behind Private Link: see the table below. Peering stays an option we can add, not a prerequisite.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why Atlas needs peering and Beacon does not</h2>
+    <p>Atlas peers or Private Links into your VNet because the thing you consume from Atlas is a data plane: a database listener your application connects to, and you do not want that traffic on the public internet. Beacon consumes control-plane APIs, which Microsoft and UpCloud already expose publicly with identity-based access, and it consumes workload telemetry, which the probe pushes out. Nothing in a customer VNet has to accept a connection from us.</p>
+    <p>The Atlas pattern that does transfer is identity. Atlas authenticates to Azure with an Entra service principal the customer consents to, scoped by role assignment. That is exactly path 1.</p>
+  </section>
+
+  <section>
+    <h2>When a customer insists on no public endpoints</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Situation</th><th>What breaks</th><th>Option for the PoV</th><th>Option later</th></tr></thead>
+        <tbody>
+          <tr><td>Private AKS cluster, API server not public</td><td>Path 4</td><td>Rely on path 5 only. The probe's Deployment collects cluster state and events, so investigations still have evidence</td><td>AKS command invoke through ARM runs kubectl without a network path. Or a Private Link Service from the cell, the Atlas pattern in reverse</td></tr>
+          <tr><td>Log Analytics behind a Private Link scope</td><td>Part of path 1</td><td>Use platform metrics and Resource Health, which stay on ARM. Mark log queries as unsupported in the capability report</td><td>Private endpoint from the cell's VNet into the customer's AMPLS</td></tr>
+          <tr><td>Customer refuses any outbound from workloads</td><td>Paths 5 and 6</td><td>Agentless only. Azure gives host metrics and health. UpCloud servers give state. Say so explicitly</td><td>Customer-hosted probe gateway relay in their own network, forwarding to the cell</td></tr>
+          <tr><td>Customer wants a fixed source IP to allowlist</td><td>Nothing yet</td><td>Give each cell a static egress IP from day one. Cheap now, painful to retrofit</td><td>Per-tenant egress IP published in the console</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Rules this diagram commits us to</h2>
+    <div class="cols">
+      <div class="card"><h3>Outbound by owner</h3><p>Whoever owns the private side opens the connection. Beacon opens connections to public APIs. Probes open connections to Beacon. No exceptions in the PoV.</p></div>
+      <div class="card"><h3>Two identities per provider</h3><p>Read and write are separate credentials with separate scopes. The agent worker holds neither. It calls tools in the collector loop, which hold the read identity only.</p></div>
+      <div class="card"><h3>Webhooks are hints</h3><p>Path 3 never creates state on its own. It advances the collector loop's next tick for that scope. A lost webhook costs latency, never correctness.</p></div>
+      <div class="card"><h3>One egress per cell</h3><p>Each tenant cell has an allowlist: the two providers' API hosts, the model gateway, the notification targets. Nothing else resolves.</p></div>
+    </div>
+  </section>
+</main>

@@ -1,0 +1,57 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Beacon</title>
+<style>
+  html, body { margin:0; height:100%; }
+  body { background:var(--surface); color:var(--ink); font-family:var(--font-sans); overflow:hidden; }
+  .cover { position:relative; height:288px; overflow:hidden; }
+  .art { position:absolute; top:0; left:480px; width:480px; height:288px; overflow:hidden; }
+  .art svg { display:block; width:480px; height:288px; }
+  .beam { fill:var(--beam); }
+  .soft { fill:var(--beam-soft); }
+  .amber { fill:var(--approve); }
+  .red { fill:var(--critical); }
+  .relief { fill:var(--line-strong); }
+  .blk { rx:var(--radius-lg); }
+  .sm { rx:var(--radius-sm); }
+  .arc { fill:none; stroke:var(--surface); stroke-width:4; }
+  .arc2 { fill:none; stroke:var(--beam); stroke-width:4; }
+  .words { position:absolute; left:var(--space-6); bottom:var(--space-6); max-width:440px; }
+  .name { margin:0; font-size:120px; line-height:.9; font-weight:600; letter-spacing:-.03em; color:var(--ink); }
+  .tag { margin:var(--space-2) 0 0 4px; font-size:14px; line-height:20px; color:var(--ink-muted); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="art" aria-hidden="true">
+<svg viewBox="0 0 480 288" width="480" height="288">
+<!--
+  blocks      beam 208×288 slab bleeding off the top and bottom at x=16 (the one accent, largest) · approve 112×96 at the slab's right shoulder (the awaiting state, the colour people learn second) · critical 48×24 once, small, it only means critical · line-strong 112×144 as relief bleeding off the right edge, with beam-soft 112×48 under it — ≈38% of 960×288
+  arrangement one tall slab with satellites stepping down to the right; bottoms on the space-6 line, gutters space-4
+  pattern     arcs, from the name itself and the README's "a beacon sweeps": five concentric quarter-arcs at a space-6 pitch cut out of the slab in surface, their centre at the slab's bottom-left corner, and two more in beam over the relief block so the sweep crosses the gutter
+  scales      slab 208 = 13×space-4; satellites in space-4 multiples; arc pitch space-6 (32); corners radius-lg on blocks, radius-sm on the critical tag
+-->
+<rect class="beam blk" x="16" y="-16" width="208" height="320" rx="10"/>
+<path class="arc" d="M16 272 A32 32 0 0 1 48 240"/>
+<path class="arc" d="M16 240 A64 64 0 0 1 80 176"/>
+<path class="arc" d="M16 208 A96 96 0 0 1 112 112"/>
+<path class="arc" d="M16 176 A128 128 0 0 1 144 48"/>
+<path class="arc" d="M16 144 A160 160 0 0 1 176 -16"/>
+<rect class="amber blk" x="240" y="32" width="112" height="96" rx="10"/>
+<rect class="red sm" x="240" y="232" width="48" height="24" rx="3"/>
+<rect class="relief blk" x="368" y="112" width="128" height="144" rx="10"/>
+<rect class="soft blk" x="240" y="144" width="112" height="72" rx="10"/>
+<path class="arc2" d="M368 256 A192 192 0 0 1 400 112"/>
+<path class="arc2" d="M400 256 A224 224 0 0 1 448 112"/>
+</svg>
+</div>
+<div class="words">
+  <h1 class="name">Beacon</h1>
+  <p class="tag">Watches the estate, shows the evidence, asks before it acts.</p>
+</div>
+</div>
+</body>
+</html>
