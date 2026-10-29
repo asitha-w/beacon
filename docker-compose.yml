@@ -1,0 +1,10 @@
+services:
+  beacon:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      BEACON_ADDR: ":8080"
+      BEACON_MODEL: ${BEACON_MODEL:-claude-opus-5-5}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    restart: unless-stopped

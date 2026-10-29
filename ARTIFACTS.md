@@ -5,7 +5,7 @@ All three are private claude.ai artifacts owned by asitha.weerasinghe@ditio.no. 
 | Artifact | URL | Local source | Published version |
 |---|---|---|---|
 | Beacon Design System | https://claude.ai/artifact/4EMsnjCNeDeA497oz6CR6X | `design-system/project/` | v2, 2026-10-29 |
-| Beacon Console (clickable prototype) | https://claude.ai/artifact/XVUSdPoAo2hTtajJ4LWqSC | `prototype/beacon-console.html` | v3, 2026-10-29 |
+| Beacon Console (clickable prototype) | https://claude.ai/artifact/XVUSdPoAo2hTtajJ4LWqSC | `prototype/beacon-console.html` (frozen; the live app lives in `web/`) | v3, 2026-10-29 |
 | Beacon Traffic Map (connections diagram) | https://claude.ai/artifact/Tp9wjGK9TTBpUC69fDhqT8 | `traffic-map/beacon-traffic-map.html` | v1, 2026-10-29 |
 
 ## How to republish from this folder

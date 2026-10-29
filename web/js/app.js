@@ -1,0 +1,67 @@
+// Entry point: connects the event stream, applies events to the store and
+// renders the current route. Metrics and streamed text update in place; every
+// other event re-renders the page with scroll and input state preserved.
+import { el } from './ds.js';
+import { store, apply } from './store.js';
+import { connect } from './api.js';
+import { route } from './router.js';
+import { shell, setupShell, demobar, toast } from './shell.js';
+import { pageLogin, pageSetupTenant, pageSetupConnect } from './pages/setup.js';
+import { pageFindings, drawTiles } from './pages/findings.js';
+import { pageInvestigations, pageInv } from './pages/investigations.js';
+import { pageChat } from './pages/chat.js';
+import { pageAgents } from './pages/agents.js';
+import { pageApprovals, pageServices, pageConnections, pageResponders, pageConsumption } from './pages/admin.js';
+
+const PAGES = {
+  findings: { page: pageFindings, crumb: 'Findings', aside: true },
+  investigations: { page: pageInvestigations, crumb: 'Investigations' },
+  approvals: { page: pageApprovals, crumb: 'Approvals', aside: true },
+  chat: { page: pageChat, crumb: 'Ask Beacon', aside: true },
+  agents: { page: pageAgents, crumb: 'Agents' },
+  services: { page: pageServices, crumb: 'Services' },
+  connections: { page: pageConnections, crumb: 'Connections' },
+  responders: { page: pageResponders, crumb: 'Responders' },
+  consumption: { page: pageConsumption, crumb: 'Consumption' },
+};
+
+let renderQueued = false; let lastRoute = '';
+function render() {
+  if (!store.state) return;
+  const r = route(); const app = document.getElementById('app');
+  const active = document.activeElement; const activeId = active && active.id; const activeVal = active && 'value' in active ? active.value : null;
+  const scrollEl = app.querySelector('.content'); const sc = r === lastRoute && scrollEl ? scrollEl.scrollTop : 0; lastRoute = r;
+  let out;
+  if (r === 'login') out = pageLogin();
+  else if (r === 'setup-tenant') out = setupShell(pageSetupTenant());
+  else if (r === 'setup-connect') out = setupShell(pageSetupConnect());
+  else {
+    const parts = r.split('/');
+    if (parts[0] === 'inv') out = shell(pageInv(parts[1]), { crumb: 'Investigations / ' + parts[1], aside: true });
+    else { const p = PAGES[parts[0]] || PAGES.findings; out = shell(p.page(), { crumb: p.crumb, aside: !!p.aside }); }
+  }
+  app.replaceWith(out); out.id = 'app';
+  const ns = out.querySelector('.content'); if (ns) ns.scrollTop = sc;
+  if (activeId) { const again = document.getElementById(activeId); if (again) { if (activeVal !== null && 'value' in again && again.value === '') again.value = activeVal; again.focus(); } }
+  drawTiles(); demobar();
+}
+function scheduleRender() {
+  if (renderQueued) return; renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; render(); });
+}
+function onEvent(ev) {
+  const hint = apply(ev);
+  if (hint === 'full') scheduleRender();
+  else if (hint === 'metrics') drawTiles();
+  else if (hint && hint.kind === 'delta') { const n = document.querySelector(`[data-msg="${hint.id}"]`); if (n) n.textContent = hint.text; else scheduleRender(); }
+  else if (hint && hint.kind === 'toast') toast(hint.text);
+  if (ev.type === 'snapshot' || ev.type === 'user' || ev.type === 'tenant') {
+    // keep the route valid after sign-in, sign-out and reset
+    const s = store.state; const h = location.hash.replace(/^#/, '');
+    if (!s.user && h !== 'login') location.hash = '#login';
+    else if (s.user && !s.tenant && h.indexOf('setup') !== 0) location.hash = '#setup-tenant';
+    else if (s.user && s.tenant && (h === 'login' || h === 'setup-tenant')) location.hash = '#findings';
+  }
+}
+window.addEventListener('hashchange', render);
+connect(onEvent, (status) => { store.connection = status; if (status === 'reconnecting') toast('Connection to Beacon lost, reconnecting…'); });
