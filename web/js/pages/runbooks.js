@@ -6,7 +6,7 @@ import { markdown } from '../markdown.js';
 
 function parseSelector(text) { const out = {}; text.split(',').map((p) => p.trim()).filter(Boolean).forEach((p) => { const i = p.indexOf('='); if (i > 0) out[p.slice(0, i).trim()] = p.slice(i + 1).trim(); }); return out; }
 function selectorText(s) { return Object.keys(s || {}).map((k) => k + '=' + s[k]).join(', '); }
-function matches(rb) { return store.state.resources.filter((r) => Object.keys(rb.selector || {}).length && Object.keys(rb.selector).every((k) => (r.labels || {})[k] === rb.selector[k])); }
+function matches(rb) { return sel.cellsMatching(rb.selector); }
 
 const TEMPLATE = `# App name\n\nWhat this app is and what depends on it.\n\n## Health signals\n- Which metric matters and at what level.\n\n## Known fixes, in order\n1. First thing to try, and when it is safe.\n2. Second thing.\n\n## Never\n- What agents must not do here.\n\n## Escalation\nWho to contact, and when to page.\n`;
 
@@ -39,7 +39,7 @@ export function pageRunbooks() {
     return el('div', { class: 'card' }, [
       el('div', { class: 'bc-row', style: 'justify-content:space-between' }, [el('div', null, [el('div', { class: 'card-title', text: rb.name }), el('div', { class: 'sm muted', text: `Updated ${new Date(rb.updatedAt).toLocaleDateString()} by ${rb.updatedBy || 'unknown'} · used in ${used} run${used === 1 ? '' : 's'}` })]), Button({ label: 'Edit', onClick: () => { editing = rb.id; rerender(); } })]),
       el('div', { class: 'policy', style: 'flex-wrap:wrap;margin-top:8px' }, Object.keys(rb.selector).map((k) => el('span', { text: k + '=' + rb.selector[k] }))),
-      el('div', { class: 'sm muted', style: 'margin-top:4px', text: m.length ? 'Applies to ' + m.map((r) => r.id).join(', ') : 'No resource matches this selector yet.' }),
+      el('div', { class: 'sm muted', style: 'margin-top:4px', text: m.length ? 'Applies to ' + m.map((r) => r.id).join(', ') : 'No cell matches this selector yet.' }),
       el('div', { class: 'md-wrap' }, [markdown(rb.body)]),
     ]);
   });

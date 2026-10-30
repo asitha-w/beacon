@@ -8,7 +8,7 @@ import { icon } from './icons.js';
 export const NAV = [
   ['findings', 'Findings', 'activity'], ['investigations', 'Investigations', 'search'], ['approvals', 'Approvals', 'shield'], ['chat', 'Ask Beacon', 'message'],
   ['sep', 'Configure'],
-  ['agents', 'Agents', 'bot'], ['runbooks', 'Runbooks', 'book'], ['services', 'Apps', 'layers'], ['connections', 'Connections', 'plug'], ['responders', 'Responders', 'zap'], ['consumption', 'Consumption', 'gauge'],
+  ['cells', 'Cells', 'server'], ['connections', 'Connections', 'plug'], ['services', 'Apps', 'layers'], ['runbooks', 'Runbooks', 'book'], ['agents', 'Agents', 'bot'], ['responders', 'Responders', 'zap'], ['consumption', 'Consumption', 'gauge'],
 ];
 function themeToggle() {
   const dark = (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'dark';
@@ -34,9 +34,9 @@ export function setupShell(contentNode) {
   return el('div', { class: 'app', style: 'grid-template-columns:1fr' }, [el('div', { class: 'main' }, [el('div', { class: 'topbar' }, [el('div', { class: 'brand', style: 'padding:0' }, [el('i', null, [icon('beacon')]), 'Beacon']), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: s.user ? s.user.email : '' }), themeToggle()]), el('div', { class: 'body noaside' }, [el('div', { class: 'content' }, [contentNode])])])]);
 }
 function probeSummary() {
-  const s = store.state; const on = s.probe.hosts.length;
-  const conns = s.connections.filter((c) => c.status === 'connected').length;
-  return on ? `${on} probes online · ${conns} connections` : (conns ? `${conns} connections · no probes yet` : 'Not connected');
+  const s = store.state; const cells = s.cells.length; const agents = s.probe.hosts.length;
+  if (!cells) return s.connections.some((c) => c.status === 'connected') ? 'Connected · no cells yet' : 'Not connected';
+  return `${cells} cell${cells === 1 ? '' : 's'} · ${agents} agent${agents === 1 ? '' : 's'} online`;
 }
 export function activityPanel() {
   const s = store.state;

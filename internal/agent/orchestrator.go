@@ -94,9 +94,9 @@ func (o *Orchestrator) StartInvestigation(resource, task, by string) (string, er
 	var runID string
 	var errOut error
 	o.st.Update(func(s *domain.State) []store.Event {
-		res := s.Resource(resource)
+		res := s.Cell(resource)
 		if res == nil {
-			errOut = fmt.Errorf("no resource %q in this tenant", resource)
+			errOut = fmt.Errorf("no cell %q in this tenant; onboard it from its connection first", resource)
 			return nil
 		}
 		agent := s.Agent("investigator")
@@ -155,6 +155,9 @@ func (o *Orchestrator) runInvestigation(runID string) {
 	err := o.reasoner.Investigate(ctx, run, tb)
 	o.st.Update(func(s *domain.State) []store.Event {
 		r := s.Run(runID)
+		if r == nil {
+			return nil
+		}
 		f := s.Finding(r.FindingID)
 		evs := []store.Event{}
 		if err != nil && ctx.Err() == nil {
@@ -388,12 +391,12 @@ func (o *Orchestrator) Chat(ctx context.Context, question, by string) error {
 
 // OrchestratorTools are the tools the orchestrator may use in chat.
 func OrchestratorTools() []ToolDef {
-	res := map[string]any{"type": "string", "description": "Resource id, for example web-01, aks-shop, edge-01, db-01"}
+	res := map[string]any{"type": "string", "description": "Cell id, for example web-01, aks-shop, edge-01"}
 	return []ToolDef{
 		{Name: "list_findings", Description: "List the tenant's findings with status, severity, resource and run id.", Schema: map[string]any{}},
 		{Name: "list_runs", Description: "List agent runs with agent, status, outcome and cost.", Schema: map[string]any{}},
 		{Name: "get_resource_state", Description: "Provider state, health and services with versions for a resource, plus its current key metrics.", Schema: map[string]any{"resource": res}, Required: []string{"resource"}},
-		{Name: "start_investigation", Description: "Start the investigator on a resource with a task. Returns the run id. Use when the operator asks to check, investigate or fix something.", Schema: map[string]any{"resource": res, "task": map[string]any{"type": "string", "description": "What to investigate, in one sentence"}}, Required: []string{"resource", "task"}},
+		{Name: "start_investigation", Description: "Start the investigator on a cell with a task. Returns the run id. Use when the operator asks to check, investigate or fix something.", Schema: map[string]any{"resource": res, "task": map[string]any{"type": "string", "description": "What to investigate, in one sentence"}}, Required: []string{"resource", "task"}},
 	}
 }
 
@@ -450,12 +453,11 @@ func (o *Orchestrator) orchestratorTool(name string, in map[string]any, by strin
 func (o *Orchestrator) contextText(s *domain.State) string {
 	var b strings.Builder
 	if s.Tenant != nil {
-		fmt.Fprintf(&b, "Tenant %s (%s), cell %s. ", s.Tenant.Name, s.Tenant.Env, s.Tenant.Cell)
+		fmt.Fprintf(&b, "Tenant %s (%s), runtime %s. ", s.Tenant.Name, s.Tenant.Env, s.Tenant.Runtime)
 	}
-	fmt.Fprintf(&b, "Probes online: %d of %d. Resources: ", len(s.Probe.Hosts), len(s.Probe.Expected))
-	for i := range s.Resources {
-		r := &s.Resources[i]
-		fmt.Fprintf(&b, "%s (%s, app %s); ", r.ID, r.Kind, s.AppName(r.ID))
+	fmt.Fprintf(&b, "Agents online: %d of %d. Cells: ", len(s.Probe.Hosts), len(s.Probe.Expected))
+	for _, r := range s.Cells {
+		fmt.Fprintf(&b, "%s (%s, tier %s, app %s); ", r.ID, r.Kind, r.Tier, s.AppName(r.ID))
 	}
 	open := 0
 	for _, f := range s.Findings {
@@ -515,6 +517,9 @@ func (o *Orchestrator) Ask(ctx context.Context, runID, question string) (string,
 	}
 	o.st.Update(func(s *domain.State) []store.Event {
 		r := s.Run(runID)
+		if r == nil {
+			return nil
+		}
 		r.Questions = append(r.Questions, domain.QA{Question: question, Answer: answer, At: time.Now()})
 		return []store.Event{store.RunEvent(r)}
 	})

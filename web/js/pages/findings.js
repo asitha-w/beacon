@@ -5,7 +5,7 @@ import { spark } from '../charts.js';
 import { ago } from '../shell.js';
 
 const TILES = [
-  { id: 'probes', label: 'Probes online', sub: 'OpAMP heartbeats' },
+  { id: 'probes', label: 'Cells · agents online', sub: 'isolated channels' },
   { id: 'rate', label: 'Metrics per minute', sub: 'into the tenant cell', host: 'web-01', metric: 'requests_per_second', max: 500, scale: 4 },
   { id: 'disk', label: 'Disk, web-01', sub: 'disk_used_percent · threshold 90%', host: 'web-01', metric: 'disk_used_percent', max: 100, warn: 90, pct: true },
   { id: 'err', label: 'Error rate, aks-shop', sub: 'error_rate_percent · threshold 5%', host: 'aks-shop', metric: 'error_rate_percent', max: 25, warn: 5, pct: true },
@@ -19,7 +19,7 @@ export function pageFindings() {
     el('td', null, [SeverityChip({ severity: f.severity })]), el('td', null, [el('div', { text: f.title }), el('div', { class: 'mono muted', text: f.id + ' · ' + f.resource })]),
     el('td', { text: f.service }), el('td', null, [StatusChip({ status: f.status })]), el('td', { class: 'mono muted', text: ago(f.createdAt) })]));
   const table = el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Severity' }), el('th', { text: 'Finding' }), el('th', { text: 'Service' }), el('th', { text: 'Status' }), el('th', { text: 'Age' })])]), el('tbody', null, rows.length ? rows : [el('tr', null, [el('td', { colspan: '5', class: 'muted', text: 'No findings. The estate is quiet; inject a fault from the demo bar to see a run.' })])])])]);
-  const banner = s.probe.status !== 'online' ? el('div', { class: 'card', style: 'border-color:var(--warning)' }, [el('div', { class: 'heading', text: 'Setup is not finished' }), el('p', { class: 'sm muted', text: 'Connect both clouds and install the probe to see telemetry here.' }), el('div', { style: 'margin-top:8px' }, [Button({ label: 'Continue setup', onClick: () => go('setup-connect') })])]) : null;
+  const banner = !s.cells.length ? el('div', { class: 'card', style: 'border-color:var(--warning)' }, [el('div', { class: 'bc-row', style: 'justify-content:space-between' }, [el('div', null, [el('div', { class: 'heading', text: 'No cells yet' }), el('div', { class: 'sm muted', text: 'Connect a cloud and onboard what it discovers to see telemetry here.' })]), Button({ label: 'Continue setup', onClick: () => go('setup-connect') })])]) : null;
   return el('div', { class: 'page' }, [el('div', null, [el('h1', { class: 'display', text: 'Findings' }), el('p', { class: 'muted', id: 'v-last', text: 'waiting for telemetry' })]), banner, tiles, table]);
 }
 
@@ -27,7 +27,7 @@ export function pageFindings() {
 export function drawTiles() {
   const s = store.state; if (!s || !document.getElementById('v-probes')) return;
   const m = store.metrics;
-  document.getElementById('v-probes').textContent = `${s.probe.hosts.length} / ${s.probe.expected.length}`;
+  document.getElementById('v-probes').textContent = `${s.cells.length} · ${s.probe.hosts.length}`;
   TILES.filter((t) => t.metric).forEach((t) => {
     const v = sel.metric(t.host, t.metric); const node = document.getElementById('v-' + t.id);
     const series = sel.series(t.host, t.metric);

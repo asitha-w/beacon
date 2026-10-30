@@ -5,13 +5,12 @@ export const store = {
   state: null,
   metrics: { hosts: {}, series: {}, probes: 0, online: false, at: null },
   connection: 'connecting',
-  listeners: new Set(),
 };
 function upsert(list, item, key = 'id', prepend = false) {
   const i = list.findIndex((x) => x[key] === item[key]);
   if (i >= 0) list[i] = item; else if (prepend) list.unshift(item); else list.push(item);
 }
-// apply returns a hint for the renderer: 'full', 'metrics', 'delta' or null.
+// apply returns a hint for the renderer: 'full', 'metrics', a delta, a toast, or null.
 export function apply(ev) {
   const s = store.state;
   switch (ev.type) {
@@ -20,7 +19,7 @@ export function apply(ev) {
     case 'tenant': s.tenant = ev.data; return 'full';
     case 'connection': upsert(s.connections, ev.data); return 'full';
     case 'connections': s.connections = ev.data; return 'full';
-    case 'resources': s.resources = ev.data; return 'full';
+    case 'cells': s.cells = ev.data; return 'full';
     case 'apps': s.apps = ev.data; return 'full';
     case 'runbooks': s.runbooks = ev.data; return 'full';
     case 'probe': s.probe = ev.data; return 'full';
@@ -58,17 +57,21 @@ export function apply(ev) {
     default: return null;
   }
 }
+function matchesSel(selector, cell) { const keys = Object.keys(selector || {}); return keys.length > 0 && keys.every((k) => (cell.labels || {})[k] === selector[k]); }
 export const sel = {
   run: (id) => store.state.runs.find((r) => r.id === id),
   finding: (id) => store.state.findings.find((f) => f.id === id),
   approval: (id) => store.state.approvals.find((a) => a.id === id),
   pendingApprovals: () => store.state.approvals.filter((a) => a.status === 'pending'),
   agent: (id) => store.state.agents.find((a) => a.id === id),
+  conn: (id) => store.state.connections.find((c) => c.id === id),
   conns: (provider) => store.state.connections.filter((c) => c.provider === provider),
   connected: (provider) => store.state.connections.some((c) => c.provider === provider && c.status === 'connected'),
-  resource: (id) => store.state.resources.find((r) => r.id === id),
-  appOf: (r) => { let best = null; store.state.apps.forEach((a) => { const keys = Object.keys(a.selector || {}); if (keys.length && keys.every((k) => (r.labels || {})[k] === a.selector[k]) && (!best || keys.length > Object.keys(best.selector).length)) best = a; }); return best; },
-  resourcesOf: (app) => store.state.resources.filter((r) => sel.appOf(r) && sel.appOf(r).id === app.id),
+  cell: (id) => store.state.cells.find((c) => c.id === id),
+  appOf: (cell) => { let best = null; store.state.apps.forEach((a) => { if (matchesSel(a.selector, cell) && (!best || Object.keys(a.selector).length > Object.keys(best.selector).length)) best = a; }); return best; },
+  cellsOf: (app) => store.state.cells.filter((c) => sel.appOf(c) && sel.appOf(c).id === app.id),
+  cellsMatching: (selector) => store.state.cells.filter((c) => matchesSel(selector, c)),
+  sharedWith: (cell) => store.state.cells.filter((c) => c.id !== cell.id && c.connectionId === cell.connectionId).length,
   metric: (host, k) => (store.metrics.hosts[host] || {})[k],
   series: (host, k) => ((store.metrics.series[host] || {})[k] || []),
 };

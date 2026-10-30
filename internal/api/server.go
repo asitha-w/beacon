@@ -46,9 +46,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tenant", s.tenant)
 	mux.HandleFunc("POST /api/connections", s.createConnection)
 	mux.HandleFunc("DELETE /api/connections/{id}", s.deleteConnection)
+	mux.HandleFunc("POST /api/connections/{id}/onboard", s.onboard)
+	mux.HandleFunc("DELETE /api/cells/{id}", s.detachCell)
 	mux.HandleFunc("POST /api/apps", s.saveApp)
 	mux.HandleFunc("DELETE /api/apps/{id}", s.deleteApp)
-	mux.HandleFunc("POST /api/resources/{id}/labels", s.setLabels)
+	mux.HandleFunc("POST /api/cells/{id}/labels", s.setLabels)
 	mux.HandleFunc("POST /api/runbooks", s.saveRunbook)
 	mux.HandleFunc("DELETE /api/runbooks/{id}", s.deleteRunbook)
 	mux.HandleFunc("POST /api/probe/install", s.installProbe)
@@ -169,9 +171,9 @@ func (s *Server) tenant(w http.ResponseWriter, r *http.Request) {
 		in.Name = "Shop AS"
 	}
 	s.st.Update(func(st *domain.State) []store.Event {
-		t := &domain.Tenant{ID: fmt.Sprintf("t-%04x", rand.Intn(0xffff)), Name: in.Name, Env: in.Env, Region: in.Region, Cell: fmt.Sprintf("cell-%04x", rand.Intn(0xffff)), EgressIP: fmt.Sprintf("94.237.%d.%d", 20+rand.Intn(200), 10+rand.Intn(200)), CreatedAt: time.Now()}
+		t := &domain.Tenant{ID: fmt.Sprintf("t-%04x", rand.Intn(0xffff)), Name: in.Name, Env: in.Env, Region: in.Region, Runtime: fmt.Sprintf("rt-%04x", rand.Intn(0xffff)), EgressIP: fmt.Sprintf("94.237.%d.%d", 20+rand.Intn(200), 10+rand.Intn(200)), CreatedAt: time.Now()}
 		st.Tenant = t
-		return []store.Event{{Type: "tenant", Data: t}, store.Activity(st, "run", fmt.Sprintf("Tenant %s created. Cell %s provisioned with static egress %s.", t.Name, t.Cell, t.EgressIP), "", false)}
+		return []store.Event{{Type: "tenant", Data: t}, store.Activity(st, "run", fmt.Sprintf("Tenant %s created. Runtime %s provisioned with static egress %s.", t.Name, t.Runtime, t.EgressIP), "", false)}
 	})
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
@@ -242,15 +244,14 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request) {
 			} else {
 				domain.ValidateUpCloud(c)
 			}
-			for i := range st.Resources {
-				res := &st.Resources[i]
-				if res.Provider == c.Provider && res.ConnectionID == "" && c.ReadScope.Covers(res) || (c.Provider == "upcloud" && res.Provider == "upcloud" && res.ConnectionID == "") {
-					res.ConnectionID = c.ID
+			domain.Discover(c)
+			for _, cand := range c.Catalogue {
+				if cand.Supported {
 					n++
 				}
 			}
-			text = fmt.Sprintf("%s connected. Discovery found %d resources in scope.", c.Name, n)
-			return []store.Event{{Type: "connection", Data: c}, {Type: "resources", Data: st.Resources}, store.Activity(st, "run", text, "", false)}
+			text = fmt.Sprintf("%s connected. Discovery found %d things in scope, %d of them manageable.", c.Name, len(c.Catalogue), n)
+			return []store.Event{{Type: "connection", Data: c}, store.Activity(st, "run", text, "", false)}
 		})
 	}()
 	writeJSON(w, 202, map[string]any{"ok": true, "id": id})
@@ -264,18 +265,109 @@ func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request) {
 			if c.ID == id {
 				found = true
 				st.Connections = append(st.Connections[:i], st.Connections[i+1:]...)
-				for j := range st.Resources {
-					if st.Resources[j].ConnectionID == id {
-						st.Resources[j].ConnectionID = ""
+				kept := st.Cells[:0]
+				for _, cell := range st.Cells {
+					if cell.ConnectionID != id {
+						kept = append(kept, cell)
 					}
 				}
-				return []store.Event{{Type: "connections", Data: st.Connections}, {Type: "resources", Data: st.Resources}, store.Activity(st, "run", "Connection "+c.Name+" removed.", "", false)}
+				st.Cells = kept
+				syncProbe(st)
+				return []store.Event{{Type: "connections", Data: st.Connections}, {Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "run", "Connection "+c.Name+" removed with its cells.", "", false)}
 			}
 		}
 		return nil
 	})
 	if !found {
 		writeErr(w, 404, errors.New("no such connection"))
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// syncProbe recomputes which cells the agent is expected on.
+func syncProbe(st *domain.State) {
+	st.Probe.Expected = st.Probe.Expected[:0]
+	for _, c := range st.Cells {
+		if c.AgentCapable {
+			st.Probe.Expected = append(st.Probe.Expected, c.ID)
+		}
+	}
+	if len(st.Probe.Expected) == 0 {
+		st.Probe.Status = domain.ProbeNone
+		st.Probe.Hosts = st.Probe.Hosts[:0]
+	}
+}
+
+// onboard turns catalogue entries of a connection into cells.
+func (s *Server) onboard(w http.ResponseWriter, r *http.Request) {
+	var in struct{ IDs []string }
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, 400, err)
+		return
+	}
+	by := s.userName()
+	var errOut error
+	var added []string
+	s.st.Update(func(st *domain.State) []store.Event {
+		c := st.Connection(r.PathValue("id"))
+		if c == nil || c.Status != domain.ConnConnected {
+			errOut = errors.New("connection not found or not validated")
+			return nil
+		}
+		for _, id := range in.IDs {
+			cand := c.Candidate(id)
+			if cand == nil || !cand.Supported || st.Cell(id) != nil {
+				continue
+			}
+			st.Cells = append(st.Cells, domain.NewCell(c, cand))
+			added = append(added, id)
+		}
+		if len(added) == 0 {
+			errOut = errors.New("nothing to onboard: pick supported entries that are not cells yet")
+			return nil
+		}
+		syncProbe(st)
+		return []store.Event{{Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "run", fmt.Sprintf("%s onboarded %s as cells through %s. Basic tier: provider metrics and actions.", by, strings.Join(added, ", "), c.Name), "", false), store.Toast(fmt.Sprintf("%d cell(s) onboarded", len(added)))}
+	})
+	if errOut != nil {
+		writeErr(w, 409, errOut)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "cells": added})
+}
+
+// detachCell removes a cell from management. Its findings and runs stay as history.
+func (s *Server) detachCell(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	by := s.userName()
+	var found bool
+	s.st.Update(func(st *domain.State) []store.Event {
+		for i, c := range st.Cells {
+			if c.ID == id {
+				found = true
+				st.Cells = append(st.Cells[:i], st.Cells[i+1:]...)
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+		kept := st.Probe.Hosts[:0]
+		for _, h := range st.Probe.Hosts {
+			if h != id {
+				kept = append(kept, h)
+			}
+		}
+		st.Probe.Hosts = kept
+		syncProbe(st)
+		if st.Probe.Status != domain.ProbeNone && len(st.Probe.Hosts) < len(st.Probe.Expected) {
+			st.Probe.Status = domain.ProbeWaiting
+		}
+		return []store.Event{{Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "run", fmt.Sprintf("%s detached cell %s.", by, id), "", false)}
+	})
+	if !found {
+		writeErr(w, 404, errors.New("no such cell"))
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
@@ -381,7 +473,7 @@ func (s *Server) setLabels(w http.ResponseWriter, r *http.Request) {
 	var found bool
 	by := s.userName()
 	s.st.Update(func(st *domain.State) []store.Event {
-		res := st.Resource(r.PathValue("id"))
+		res := st.Cell(r.PathValue("id"))
 		if res == nil {
 			return nil
 		}
@@ -393,10 +485,10 @@ func (s *Server) setLabels(w http.ResponseWriter, r *http.Request) {
 		for _, f := range st.Findings {
 			f.Service = st.AppName(f.Resource)
 		}
-		return []store.Event{{Type: "resources", Data: st.Resources}, store.Activity(st, "run", fmt.Sprintf("%s relabelled %s.", by, res.ID), "", false)}
+		return []store.Event{{Type: "cells", Data: st.Cells}, store.Activity(st, "run", fmt.Sprintf("%s relabelled %s.", by, res.ID), "", false)}
 	})
 	if !found {
-		writeErr(w, 404, errors.New("no such resource"))
+		writeErr(w, 404, errors.New("no such cell"))
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
@@ -405,21 +497,38 @@ func (s *Server) setLabels(w http.ResponseWriter, r *http.Request) {
 func (s *Server) installProbe(w http.ResponseWriter, _ *http.Request) {
 	var ready bool
 	s.st.Update(func(st *domain.State) []store.Event {
-		cp := st.ConnectedProviders()
-		if !cp["azure"] || !cp["upcloud"] {
+		syncProbe(st)
+		if len(st.Probe.Expected) == 0 {
 			return nil
 		}
 		ready = true
 		st.Probe.Status = domain.ProbeWaiting
-		return []store.Event{{Type: "probe", Data: st.Probe}}
+		for _, c := range st.Cells {
+			if c.AgentCapable && c.Tier != domain.TierAgent {
+				c.Channel = domain.ChannelWaiting
+			}
+		}
+		return []store.Event{{Type: "probe", Data: st.Probe}, {Type: "cells", Data: st.Cells}}
 	})
 	if !ready {
-		writeErr(w, 409, errors.New("connect both clouds first"))
+		writeErr(w, 409, errors.New("onboard at least one agent-capable cell first"))
 		return
 	}
 	go func() {
 		var hosts []string
-		s.st.View(func(st *domain.State) { hosts = append(hosts, st.Probe.Expected...) })
+		s.st.View(func(st *domain.State) {
+			for _, h := range st.Probe.Expected {
+				found := false
+				for _, on := range st.Probe.Hosts {
+					if on == h {
+						found = true
+					}
+				}
+				if !found {
+					hosts = append(hosts, h)
+				}
+			}
+		})
 		for i, h := range hosts {
 			time.Sleep(time.Duration(1500+i*400) * time.Millisecond)
 			s.st.Update(func(st *domain.State) []store.Event {
@@ -430,7 +539,11 @@ func (s *Server) installProbe(w http.ResponseWriter, _ *http.Request) {
 				if len(st.Probe.Hosts) == len(st.Probe.Expected) {
 					st.Probe.Status = domain.ProbeOnline
 				}
-				return []store.Event{{Type: "probe", Data: st.Probe}, store.Activity(st, "signal", "Probe "+h+" dialled in over OpAMP. Telemetry flowing.", "", false), store.Toast("Probe online: " + h)}
+				if c := st.Cell(h); c != nil {
+					c.Tier = domain.TierAgent
+					c.Channel = domain.ChannelOnline
+				}
+				return []store.Event{{Type: "probe", Data: st.Probe}, {Type: "cells", Data: st.Cells}, store.Activity(st, "signal", "Agent on "+h+" dialled in over OpAMP. Cell raised to the agent tier.", "", false), store.Toast("Agent online: " + h)}
 			})
 		}
 	}()
@@ -567,8 +680,13 @@ func (s *Server) startScenario(w http.ResponseWriter, r *http.Request) {
 	var errOut error
 	s.st.Update(func(st *domain.State) []store.Event {
 		sc := st.Scenario(id)
-		if st.Probe.Status != domain.ProbeOnline {
-			errOut = errors.New("finish setup first: the probe must be online")
+		cell := st.Cell(sc.Resource)
+		if cell == nil {
+			errOut = fmt.Errorf("onboard %s as a cell first", sc.Resource)
+			return nil
+		}
+		if cell.AgentCapable && cell.Tier != domain.TierAgent {
+			errOut = fmt.Errorf("install the agent on %s first; this scenario needs in-guest signals", sc.Resource)
 			return nil
 		}
 		for _, o := range st.Scenarios {

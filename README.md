@@ -21,15 +21,26 @@ Agentic reliability operations for teams on Azure and UpCloud without a full-tim
 ## Run it
 
 ```sh
-make run                      # scripted mode: no API key needed, playbooks drive the agents
-ANTHROPIC_API_KEY=... make run  # live mode: the investigator and orchestrator call Claude
+./start.sh                      # batteries included: finds or fetches Go, builds, starts on :8080
+./start.sh --dev                # same, with the console served from web/ so edits show on refresh
+ANTHROPIC_API_KEY=... ./start.sh  # live mode: the investigator and orchestrator call Claude
 ```
 
-Open http://localhost:8080, sign in with anything, create a tenant, validate both clouds, wait for the probes, then inject a fault from the demo bar at the bottom.
+`make run`, `make dev` and `make build` do the same for people who already have Go.
+
+Open http://localhost:8080, sign in with anything, create a tenant, validate a cloud connection, onboard what it discovered as cells, install the agent on them, then inject a fault from the demo bar at the bottom.
+
+## The model
+
+- A **tenant** is a collection of cells served by one **runtime**: isolated workers, its own credentials, one static egress address.
+- A **connection** is an identity at a scope on a provider. It discovers what Beacon could manage and with what access; it manages nothing by itself.
+- A **cell** is the most specific managed thing: one VM, one cluster, one server. It came through one connection, has its own isolated channel in the runtime, and carries labels. Every cell starts at the **basic** tier (provider metrics and actions through the API); installing the agent raises it to the **agent** tier (in-guest metrics, logs, files, commands).
+- **Apps** and **runbooks** are label selectors over cells. An app is a named label group with an owner, a criticality and an SLO; it can be an application, a gateway or a single machine.
+- One **agent team** per tenant works every cell: the orchestrator the operator talks to, the specialists it starts, and the deterministic remediator and verifier. A run binds a specialist to one cell.
 
 Settings are environment variables; see `.env.example`. `BEACON_MODEL` defaults to `claude-opus-5-5`.
 
-`make build` produces a single static binary in `bin/`. `docker compose up --build` runs it in a container.
+`make dev` serves the console from `web/` on disk, so a browser refresh shows every change without a rebuild. `make build` produces a single static binary in `bin/`. `docker compose up --build` runs it in a container.
 
 ## How a run works
 
@@ -40,9 +51,9 @@ Settings are environment variables; see `.env.example`. `BEACON_MODEL` defaults 
 5. The **remediator** executes the approved action against the world and records the provider response. It has no model.
 6. The **verifier** marks the cause Verified only when every claim has a pointer, and the signal loop re-reads the triggering signal before the finding is resolved.
 
-**Connections** are one identity at one scope. An Azure connection needs the Entra directory, an identity (consent to the Beacon app, or bring your own app registration with a federated credential or certificate), a read scope for discovery and an optional, narrower write scope for fixes. Validation lists the role assignments and derives the capability list from them. The remediator refuses an approved action when no connection's write scope covers the resource. An UpCloud connection is a sub-account token whose grants are the frame.
+**Connections** need, on Azure, the Entra directory, an identity (consent to the Beacon app, or bring your own app registration with a federated credential or certificate), a read scope for discovery and an optional, narrower write scope for fixes. Validation lists the role assignments, derives the capability list from them, and fills the catalogue of what is in scope. The remediator refuses an approved action when no connection's write scope covers the cell. An UpCloud connection is a sub-account token whose grants are the frame.
 
-**Labels and apps.** Resources carry labels imported from provider tags and editable in Beacon. An app is a label selector; resources join by matching and findings are attributed to the most specific app. Runbooks will attach to the same labels.
+**Isolation.** At Beacon's layer every cell has its own channel, policy, budget and audit trail, and a run can only touch the cell it was started for. At the provider's layer isolation is as good as the identity's scope: the Cells page says whether a cell's identity is dedicated or shared with other cells.
 
 **Runbooks** are tenant-written Markdown attached to a label selector. The orchestrator hands every matching runbook to the investigator with the task, most specific first, and the run records which ones applied. A runbook guides; the responder policy still decides what may run.
 

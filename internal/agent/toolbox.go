@@ -86,7 +86,7 @@ func NewToolbox(st *store.Store, w *world.World, gate *Gate, runID, agentID stri
 
 // Defs returns the tool definitions the investigator may use.
 func InvestigatorTools() []ToolDef {
-	res := map[string]any{"type": "string", "description": "Resource id, for example web-01, aks-shop, edge-01, db-01"}
+	res := map[string]any{"type": "string", "description": "Cell id, for example web-01, aks-shop, edge-01"}
 	return []ToolDef{
 		{Name: "read_metrics", Description: "Read a metric series for a resource over a window and get a summary with samples. Metrics include cpu_percent, memory_percent, disk_used_percent, requests_per_second, error_rate_percent, p95_latency_ms, http_up, log_growth_mb_per_min, pod_restarts_10m.",
 			Schema: map[string]any{"resource": res, "metric": map[string]any{"type": "string"}, "window_minutes": map[string]any{"type": "integer"}}, Required: []string{"resource", "metric"}},
@@ -191,6 +191,9 @@ func (t *Toolbox) exec(ctx context.Context, name string, in map[string]any) (str
 		}
 		t.st.Update(func(s *domain.State) []store.Event {
 			r := s.Run(t.runID)
+			if r == nil {
+				return nil
+			}
 			r.Evidence = append(r.Evidence, e)
 			return []store.Event{store.RunEvent(r)}
 		})
@@ -199,6 +202,9 @@ func (t *Toolbox) exec(ctx context.Context, name string, in map[string]any) (str
 		h := domain.Hypothesis{Title: str(in, "title"), Detail: str(in, "detail"), Verdict: str(in, "verdict")}
 		t.st.Update(func(s *domain.State) []store.Event {
 			r := s.Run(t.runID)
+			if r == nil {
+				return nil
+			}
 			r.Hypotheses = append(r.Hypotheses, h)
 			return []store.Event{store.RunEvent(r)}
 		})
@@ -208,6 +214,9 @@ func (t *Toolbox) exec(ctx context.Context, name string, in map[string]any) (str
 	case "conclude":
 		t.st.Update(func(s *domain.State) []store.Event {
 			r := s.Run(t.runID)
+			if r == nil {
+				return nil
+			}
 			r.Summary = str(in, "summary")
 			r.CauseVerified, _ = in["cause_verified"].(bool)
 			if len(t.Chain) > 0 && len(r.Chain) == 0 {
@@ -248,6 +257,9 @@ func (t *Toolbox) propose(ctx context.Context, in map[string]any) (string, error
 	case domain.PolicyDeny:
 		t.st.Update(func(s *domain.State) []store.Event {
 			r := s.Run(t.runID)
+			if r == nil {
+				return nil
+			}
 			t.appendMsg(r, domain.RolePolicy, "policy", "denied", fmt.Sprintf("%s is denied for responder %s. Nothing was changed. Propose a different action or conclude with a recommendation.", action, t.responderID()))
 			return []store.Event{store.RunEvent(r), store.Activity(s, "policy", action+" denied by policy on "+t.responderID()+".", t.runID, false)}
 		})
@@ -256,6 +268,9 @@ func (t *Toolbox) propose(ctx context.Context, in map[string]any) (string, error
 		var ap *domain.Approval
 		t.st.Update(func(s *domain.State) []store.Event {
 			r := s.Run(t.runID)
+			if r == nil {
+				return nil
+			}
 			f := s.Finding(r.FindingID)
 			ap = &domain.Approval{ID: t.st.NextID("A", 0x20), RunID: r.ID, FindingID: r.FindingID, Task: str(in, "summary"), Level: level, Action: action, Args: args, Command: cmd, BlastRadius: str(in, "blast_radius"), Status: domain.ApprovalPending, RequestedAt: time.Now()}
 			s.Approvals = append(s.Approvals, ap)
@@ -284,6 +299,9 @@ func (t *Toolbox) propose(ctx context.Context, in map[string]any) (string, error
 		if !d.approved {
 			t.st.Update(func(s *domain.State) []store.Event {
 				r := s.Run(t.runID)
+				if r == nil {
+					return nil
+				}
 				t.appendMsg(r, domain.RoleUser, "", d.by+" · denied", "Denied. The finding is escalated to on-call with the full thread. No change was made.")
 				return []store.Event{store.RunEvent(r)}
 			})
@@ -291,6 +309,9 @@ func (t *Toolbox) propose(ctx context.Context, in map[string]any) (string, error
 		}
 		t.st.Update(func(s *domain.State) []store.Event {
 			r := s.Run(t.runID)
+			if r == nil {
+				return nil
+			}
 			t.appendMsg(r, domain.RoleUser, "", d.by+" · approved", "Approved: "+str(in, "summary"))
 			return []store.Event{store.RunEvent(r)}
 		})
@@ -298,6 +319,9 @@ func (t *Toolbox) propose(ctx context.Context, in map[string]any) (string, error
 	default:
 		t.st.Update(func(s *domain.State) []store.Event {
 			r := s.Run(t.runID)
+			if r == nil {
+				return nil
+			}
 			t.appendMsg(r, domain.RolePolicy, "policy", "autonomous · "+level, fmt.Sprintf("%s is allowlisted for %s in autonomous mode. Preconditions passed. Executing now and reporting.", action, t.responderID()))
 			return []store.Event{store.RunEvent(r), store.Activity(s, "policy", fmt.Sprintf("%s allowlisted on %s (%s). Executing without approval.", action, t.responderID(), level), t.runID, false)}
 		})
@@ -311,9 +335,9 @@ func (t *Toolbox) remediate(action string, args map[string]any, cmd, why string)
 	var writeErr error
 	var conn string
 	t.st.View(func(s *domain.State) {
-		res := s.Resource(str(args, "resource"))
+		res := s.Cell(str(args, "resource"))
 		if res == nil {
-			writeErr = fmt.Errorf("unknown resource %q", str(args, "resource"))
+			writeErr = fmt.Errorf("%q is not an onboarded cell", str(args, "resource"))
 			return
 		}
 		if action == "notify" {
@@ -329,6 +353,9 @@ func (t *Toolbox) remediate(action string, args map[string]any, cmd, why string)
 	if writeErr != nil {
 		t.st.Update(func(s *domain.State) []store.Event {
 			r := s.Run(t.runID)
+			if r == nil {
+				return nil
+			}
 			r.Status = domain.RunDone
 			r.Outcome = "Blocked: no write identity"
 			t.appendMsg(r, domain.RoleExecutor, "remediator", "write identity", cmd+"\nstatus: Not run\n"+writeErr.Error()+". Add a write scope to the connection, or run this by hand.")
@@ -347,6 +374,9 @@ func (t *Toolbox) remediate(action string, args map[string]any, cmd, why string)
 	}
 	t.st.Update(func(s *domain.State) []store.Event {
 		r := s.Run(t.runID)
+		if r == nil {
+			return nil
+		}
 		r.Status = domain.RunExecuting
 		r.Outcome = "Executing"
 		evs := []store.Event{}
@@ -362,6 +392,9 @@ func (t *Toolbox) remediate(action string, args map[string]any, cmd, why string)
 	out, err := t.w.Execute(world.Action{Name: action, Args: args})
 	t.st.Update(func(s *domain.State) []store.Event {
 		r := s.Run(t.runID)
+		if r == nil {
+			return nil
+		}
 		evs := []store.Event{}
 		if err != nil {
 			r.Status = domain.RunFailed
@@ -426,6 +459,9 @@ func (t *Toolbox) addTool(name string, in map[string]any) string {
 	var id string
 	t.st.Update(func(s *domain.State) []store.Event {
 		r := s.Run(t.runID)
+		if r == nil {
+			return nil
+		}
 		id = t.st.NextID("m", 0)
 		r.Messages = append(r.Messages, &domain.Message{ID: id, Role: domain.RoleTool, Agent: t.agentID, Tool: &domain.ToolCall{Name: name, Input: in, Status: "running"}, At: time.Now()})
 		return []store.Event{store.RunEvent(r)}
@@ -436,6 +472,9 @@ func (t *Toolbox) addTool(name string, in map[string]any) string {
 func (t *Toolbox) finishTool(id, out, status string) {
 	t.st.Update(func(s *domain.State) []store.Event {
 		r := s.Run(t.runID)
+		if r == nil {
+			return nil
+		}
 		for _, m := range r.Messages {
 			if m.ID == id && m.Tool != nil {
 				m.Tool.Output = out
@@ -457,6 +496,9 @@ func (t *Toolbox) Say(role, title, text string) string {
 	var id string
 	t.st.Update(func(s *domain.State) []store.Event {
 		r := s.Run(t.runID)
+		if r == nil {
+			return nil
+		}
 		m := t.appendMsg(r, role, t.agentID, title, text)
 		id = m.ID
 		return []store.Event{store.RunEvent(r)}
@@ -468,6 +510,9 @@ func (t *Toolbox) Say(role, title, text string) string {
 func (t *Toolbox) Append(id, delta string) {
 	t.st.Update(func(s *domain.State) []store.Event {
 		r := s.Run(t.runID)
+		if r == nil {
+			return nil
+		}
 		for _, m := range r.Messages {
 			if m.ID == id {
 				m.Text += delta

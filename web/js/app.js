@@ -12,6 +12,7 @@ import { pageInvestigations, pageInv } from './pages/investigations.js';
 import { pageChat } from './pages/chat.js';
 import { pageAgents } from './pages/agents.js';
 import { pageRunbooks } from './pages/runbooks.js';
+import { pageCells } from './pages/cells.js';
 import { pageApprovals, pageServices, pageConnections, pageResponders, pageConsumption } from './pages/admin.js';
 
 const PAGES = {
@@ -22,6 +23,7 @@ const PAGES = {
   agents: { page: pageAgents, crumb: 'Agents' },
   services: { page: pageServices, crumb: 'Apps' },
   runbooks: { page: pageRunbooks, crumb: 'Runbooks' },
+  cells: { page: pageCells, crumb: 'Cells' },
   connections: { page: pageConnections, crumb: 'Connections' },
   responders: { page: pageResponders, crumb: 'Responders' },
   consumption: { page: pageConsumption, crumb: 'Consumption' },

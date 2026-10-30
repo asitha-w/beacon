@@ -5,20 +5,49 @@ import "time"
 // Seed data for a fresh tenant. In the real product these come from discovery
 // and the tenant's own configuration; here they describe the simulated estate.
 
-// SeedResources is the discovered estate. Labels mirror the provider tags.
-func SeedResources() []Resource {
-	return []Resource{
-		{ID: "web-01", Kind: "Azure VM", Detail: "Standard_B2s · westeurope", Provider: "azure", ResourceGroup: "rg-shop-prod", Probe: true,
-			Labels: map[string]string{"app": "shop", "tier": "web", "env": "production", "os": "linux"}},
-		{ID: "aks-shop", Kind: "AKS cluster", Detail: "3 nodes · 1.31", Provider: "azure", ResourceGroup: "rg-shop-prod", Probe: true,
-			Labels: map[string]string{"app": "shop", "tier": "api", "env": "production", "platform": "kubernetes"}},
-		{ID: "la-shop", Kind: "Log Analytics", Detail: "workspace", Provider: "azure", ResourceGroup: "rg-shop-prod",
-			Labels: map[string]string{"app": "shop", "tier": "observability", "env": "production"}},
-		{ID: "db-01", Kind: "UpCloud managed PostgreSQL", Detail: "2 vCPU · fi-hel2", Provider: "upcloud",
-			Labels: map[string]string{"app": "shop", "tier": "data", "env": "production"}},
-		{ID: "edge-01", Kind: "UpCloud server", Detail: "1 vCPU 1 GB · de-fra1", Provider: "upcloud", Probe: true,
-			Labels: map[string]string{"app": "edge", "tier": "proxy", "env": "production", "os": "linux"}},
+// Inventory is what a provider returns for discovery. Supported kinds become
+// cells when onboarded; the rest are listed so the catalogue is honest about
+// what Beacon saw and cannot manage yet.
+var Inventory = map[string][]Candidate{
+	"azure": {
+		{ID: "web-01", Kind: "Azure VM", Detail: "Standard_B2s · westeurope", ResourceGroup: "rg-shop-prod", Supported: true, AgentCapable: true, Labels: map[string]string{"app": "shop", "tier": "web", "env": "production", "os": "linux"}},
+		{ID: "aks-shop", Kind: "AKS cluster", Detail: "3 nodes · 1.31", ResourceGroup: "rg-shop-prod", Supported: true, AgentCapable: true, Labels: map[string]string{"app": "shop", "tier": "api", "env": "production", "platform": "kubernetes"}},
+		{ID: "la-shop", Kind: "Log Analytics workspace", Detail: "workspace", ResourceGroup: "rg-shop-prod", Labels: map[string]string{"app": "shop", "tier": "observability", "env": "production"}},
+		{ID: "stshopprod", Kind: "Storage account", Detail: "Standard_LRS", ResourceGroup: "rg-shop-prod", Labels: map[string]string{"app": "shop", "env": "production"}},
+		{ID: "vm-staging-01", Kind: "Azure VM", Detail: "Standard_B1s · westeurope", ResourceGroup: "rg-shop-staging", Supported: true, AgentCapable: true, Labels: map[string]string{"app": "shop", "tier": "web", "env": "staging", "os": "linux"}},
+	},
+	"upcloud": {
+		{ID: "edge-01", Kind: "UpCloud server", Detail: "1 vCPU 1 GB · de-fra1", Supported: true, AgentCapable: true, Labels: map[string]string{"app": "edge", "tier": "proxy", "env": "production", "os": "linux"}},
+		{ID: "db-01", Kind: "UpCloud managed PostgreSQL", Detail: "2 vCPU · fi-hel2", Labels: map[string]string{"app": "shop", "tier": "data", "env": "production"}},
+	},
+}
+
+// Discover fills the connection's catalogue from the provider inventory in scope.
+func Discover(c *Connection) {
+	c.Catalogue = nil
+	for _, cand := range Inventory[c.Provider] {
+		probe := &Cell{ID: cand.ID, Provider: c.Provider, ResourceGroup: cand.ResourceGroup}
+		access := c.AccessTo(probe)
+		if access == "" {
+			continue
+		}
+		cp := cand
+		cp.Access = access
+		cp.Labels = map[string]string{}
+		for k, v := range cand.Labels {
+			cp.Labels[k] = v
+		}
+		c.Catalogue = append(c.Catalogue, cp)
 	}
+}
+
+// NewCell creates a cell from a catalogue entry.
+func NewCell(c *Connection, cand *Candidate) *Cell {
+	labels := map[string]string{}
+	for k, v := range cand.Labels {
+		labels[k] = v
+	}
+	return &Cell{ID: cand.ID, Kind: cand.Kind, Detail: cand.Detail, Provider: c.Provider, ResourceGroup: cand.ResourceGroup, ConnectionID: c.ID, Tier: TierBasic, Channel: ChannelConnected, AgentCapable: cand.AgentCapable, Labels: labels, OnboardedAt: time.Now()}
 }
 
 // SeedApps groups the estate by label selector.
@@ -215,8 +244,8 @@ func short(s string) string {
 func NewState(model, reasoner string) *State {
 	s := &State{
 		Connections: []*Connection{},
-		Probe:       Probe{Status: ProbeNone, Hosts: []string{}, Expected: []string{"edge-01", "web-01", "aks-shop"}},
-		Resources:   SeedResources(),
+		Probe:       Probe{Status: ProbeNone, Hosts: []string{}, Expected: []string{}},
+		Cells:       []*Cell{},
 		Apps:        SeedApps(),
 		Runbooks:    SeedRunbooks(),
 		Responders:  SeedResponders(),

@@ -81,10 +81,19 @@ func main() {
 		log.Info("tenant reset")
 	}
 
-	webFS, err := fs.Sub(web.FS, ".")
-	if err != nil {
-		log.Error("web fs", "err", err)
-		os.Exit(1)
+	// BEACON_WEB_DIR serves the console from disk so a browser refresh shows
+	// every change; unset, the embedded copy is used.
+	var webFS fs.FS
+	if dir := os.Getenv("BEACON_WEB_DIR"); dir != "" {
+		webFS = os.DirFS(dir)
+		log.Info("dev mode: serving console from disk", "dir", dir)
+	} else {
+		sub, err := fs.Sub(web.FS, ".")
+		if err != nil {
+			log.Error("web fs", "err", err)
+			os.Exit(1)
+		}
+		webFS = sub
 	}
 	srv := &http.Server{Addr: addr, Handler: api.New(st, w, orch, webFS, reset, log).Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {

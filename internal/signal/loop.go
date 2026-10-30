@@ -108,9 +108,19 @@ func (l *Loop) step() {
 	if !online {
 		return
 	}
-	// signal: open findings
+	// signal: open findings, only for onboarded cells
+	cells := map[string]bool{}
+	l.st.View(func(s *domain.State) {
+		for _, c := range s.Cells {
+			cells[c.ID] = true
+		}
+	})
 	for _, r := range l.rules {
 		key := r.Responder + "/" + r.Resource
+		if !cells[r.Resource] {
+			l.hold[key] = 0
+			continue
+		}
 		if r.Check(l.w) {
 			l.hold[key]++
 		} else {

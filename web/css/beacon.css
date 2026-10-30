@@ -275,3 +275,19 @@ select.sm { height:30px; font-size:13px; padding:0 8px; }
   .grid2 { grid-template-columns:1fr; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+
+/* cells, channels, catalogue */
+.runtime { display:grid; gap:4px; padding:14px 16px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--muted); min-width:220px; }
+.runtime b { font-family:var(--font-mono); font-weight:600; font-size:14px; }
+.chans { display:grid; gap:6px; flex:1; min-width:280px; }
+.chan { display:flex; align-items:center; gap:10px; font-size:13px; }
+.chan .line { width:28px; height:0; border-top:1px dashed var(--faint); flex:0 0 auto; }
+.chan.on .line { border-top:2px solid var(--brand); }
+.table.compact td, .table.compact th { padding:8px 10px; font-size:13px; }
+.table.compact td input[type=checkbox] { accent-color:var(--primary); width:15px; height:15px; }
+details.details summary { cursor:pointer; font-size:13px; color:var(--muted-fg); list-style:none; display:flex; align-items:center; gap:6px; }
+details.details summary::before { content:"▸"; font-size:11px; }
+details.details[open] summary::before { content:"▾"; }
+details.details > * + * { margin-top:10px; }
+.tablewrap .table.compact { min-width:0; }
+.table.compact .bc-pill { white-space:nowrap; }

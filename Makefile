@@ -5,6 +5,9 @@ BIN := bin/beacon
 run: ## run the console on :8080 (scripted mode unless ANTHROPIC_API_KEY is set)
 	go run ./cmd/beacon
 
+dev: ## run with the console served from disk: edit web/, refresh the browser
+	BEACON_WEB_DIR=web BEACON_PACE_MS=400 go run ./cmd/beacon
+
 build: ## build a self-contained binary into bin/
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BIN) ./cmd/beacon
 

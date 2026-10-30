@@ -15,13 +15,14 @@ type User struct {
 	Role  string `json:"role"`
 }
 
-// Tenant is one customer cell: isolated workers, own credentials, one static egress.
+// Tenant is a collection of cells served by one runtime: isolated workers,
+// own credentials, one static egress address.
 type Tenant struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Env       string    `json:"env"`
 	Region    string    `json:"region"`
-	Cell      string    `json:"cell"`
+	Runtime   string    `json:"runtime"`
 	EgressIP  string    `json:"egressIp"`
 	CreatedAt time.Time `json:"createdAt"`
 }
@@ -56,7 +57,7 @@ type Scope struct {
 }
 
 // Covers reports whether the scope includes the resource.
-func (sc Scope) Covers(r *Resource) bool {
+func (sc Scope) Covers(r *Cell) bool {
 	switch sc.Level {
 	case ScopeManagementGroup, ScopeSubscription:
 		return true
@@ -93,6 +94,7 @@ type Connection struct {
 	SubAccount string   `json:"subAccount,omitempty"`
 	Grants     []string `json:"grants,omitempty"`
 	// Validation result
+	Catalogue    []Candidate      `json:"catalogue"`
 	Identity     string           `json:"identity,omitempty"`
 	Roles        []RoleAssignment `json:"roles,omitempty"`
 	ValidatedAt  *time.Time       `json:"validatedAt,omitempty"`
@@ -100,8 +102,40 @@ type Connection struct {
 	Error        string           `json:"error,omitempty"`
 }
 
+// AccessTo returns what the connection can do on a cell: "", "read" or "write".
+func (c *Connection) AccessTo(r *Cell) string {
+	if c.Provider != r.Provider {
+		return ""
+	}
+	if c.CanWrite(r) {
+		return "write"
+	}
+	if c.Provider == "upcloud" {
+		for _, g := range c.Grants {
+			if g == "server.read" || g == "database.read" {
+				return "read"
+			}
+		}
+		return ""
+	}
+	if c.ReadScope.Covers(r) {
+		return "read"
+	}
+	return ""
+}
+
+// Candidate returns the catalogue entry with the id, or nil.
+func (c *Connection) Candidate(id string) *Candidate {
+	for i := range c.Catalogue {
+		if c.Catalogue[i].ID == id {
+			return &c.Catalogue[i]
+		}
+	}
+	return nil
+}
+
 // CanWrite reports whether the connection's write identity covers the resource.
-func (c *Connection) CanWrite(r *Resource) bool {
+func (c *Connection) CanWrite(r *Cell) bool {
 	if c.Status != ConnConnected || c.Provider != r.Provider {
 		return false
 	}
@@ -130,20 +164,48 @@ type Probe struct {
 	Expected []string `json:"expected"`
 }
 
-// Resource is a discovered cloud resource. Labels come from provider tags and
-// can be edited in Beacon; apps and runbooks select resources by label.
-type Resource struct {
+// Cell tiers and channel states.
+const (
+	TierBasic = "basic" // provider metrics and provider actions through the API
+	TierAgent = "agent" // the probe is installed: in-guest metrics, logs, files, commands
+
+	ChannelConnected = "connected"
+	ChannelWaiting   = "waiting"
+	ChannelOnline    = "online"
+	ChannelOffline   = "offline"
+)
+
+// Cell is the most specific thing Beacon manages: one VM, one cluster, one
+// server. It has its own isolated channel in the tenant runtime, came through
+// one connection, and carries the labels that apps and runbooks select on.
+type Cell struct {
 	ID            string            `json:"id"`
 	Kind          string            `json:"kind"`
 	Detail        string            `json:"detail"`
 	Provider      string            `json:"provider"`
 	ResourceGroup string            `json:"resourceGroup,omitempty"`
 	ConnectionID  string            `json:"connectionId,omitempty"`
-	Probe         bool              `json:"probe"`
+	Tier          string            `json:"tier"`
+	Channel       string            `json:"channel"`
+	AgentCapable  bool              `json:"agentCapable"`
+	Labels        map[string]string `json:"labels"`
+	OnboardedAt   time.Time         `json:"onboardedAt"`
+}
+
+// Candidate is one thing discovered through a connection that could become a cell.
+type Candidate struct {
+	ID            string            `json:"id"`
+	Kind          string            `json:"kind"`
+	Detail        string            `json:"detail"`
+	ResourceGroup string            `json:"resourceGroup,omitempty"`
+	Supported     bool              `json:"supported"`
+	AgentCapable  bool              `json:"agentCapable"`
+	Access        string            `json:"access"` // read, write
 	Labels        map[string]string `json:"labels"`
 }
 
-// App groups resources by a label selector and decides who is paged.
+// App groups cells by a label selector and decides who is paged. It can be a
+// real application, a gateway, or one machine that stands alone.
 type App struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
@@ -154,9 +216,9 @@ type App struct {
 }
 
 // Matches reports whether every selector pair is present on the resource.
-func (a *App) Matches(r *Resource) bool { return selectorMatches(a.Selector, r) }
+func (a *App) Matches(r *Cell) bool { return selectorMatches(a.Selector, r) }
 
-func selectorMatches(sel map[string]string, r *Resource) bool {
+func selectorMatches(sel map[string]string, r *Cell) bool {
 	if len(sel) == 0 {
 		return false
 	}
@@ -181,7 +243,7 @@ type Runbook struct {
 }
 
 // Matches reports whether the runbook applies to the resource.
-func (rb *Runbook) Matches(r *Resource) bool { return selectorMatches(rb.Selector, r) }
+func (rb *Runbook) Matches(r *Cell) bool { return selectorMatches(rb.Selector, r) }
 
 // Tool policies.
 const (
@@ -425,7 +487,7 @@ type State struct {
 	Tenant      *Tenant           `json:"tenant"`
 	Connections []*Connection     `json:"connections"`
 	Probe       Probe             `json:"probe"`
-	Resources   []Resource        `json:"resources"`
+	Cells       []*Cell           `json:"cells"`
 	Apps        []*App            `json:"apps"`
 	Runbooks    []*Runbook        `json:"runbooks"`
 	Responders  []*Responder      `json:"responders"`
@@ -511,18 +573,18 @@ func (s *State) OpenFinding(responderID, resource string) *Finding {
 	return nil
 }
 
-// Resource returns the resource with the id, or nil.
-func (s *State) Resource(id string) *Resource {
-	for i := range s.Resources {
-		if s.Resources[i].ID == id {
-			return &s.Resources[i]
+// Cell returns the cell with the id, or nil.
+func (s *State) Cell(id string) *Cell {
+	for _, c := range s.Cells {
+		if c.ID == id {
+			return c
 		}
 	}
 	return nil
 }
 
-// AppOf returns the most specific app whose selector matches the resource, or nil.
-func (s *State) AppOf(r *Resource) *App {
+// AppOf returns the most specific app whose selector matches the cell, or nil.
+func (s *State) AppOf(r *Cell) *App {
 	var best *App
 	for _, a := range s.Apps {
 		if a.Matches(r) && (best == nil || len(a.Selector) > len(best.Selector)) {
@@ -532,9 +594,9 @@ func (s *State) AppOf(r *Resource) *App {
 	return best
 }
 
-// AppName returns the app name for a resource id, or "Unassigned".
-func (s *State) AppName(resourceID string) string {
-	if r := s.Resource(resourceID); r != nil {
+// AppName returns the app name for a cell id, or "Unassigned".
+func (s *State) AppName(cellID string) string {
+	if r := s.Cell(cellID); r != nil {
 		if a := s.AppOf(r); a != nil {
 			return a.Name
 		}
@@ -573,8 +635,8 @@ func (s *State) ConnectedProviders() map[string]bool {
 	return out
 }
 
-// WriteConnection returns a connection whose write identity covers the resource, or nil.
-func (s *State) WriteConnection(r *Resource) *Connection {
+// WriteConnection returns a connection whose write identity covers the cell, or nil.
+func (s *State) WriteConnection(r *Cell) *Connection {
 	for _, c := range s.Connections {
 		if c.CanWrite(r) {
 			return c
@@ -583,9 +645,9 @@ func (s *State) WriteConnection(r *Resource) *Connection {
 	return nil
 }
 
-// RunbooksFor returns the runbooks matching a resource, most specific first.
-func (s *State) RunbooksFor(resourceID string) []*Runbook {
-	r := s.Resource(resourceID)
+// RunbooksFor returns the runbooks matching a cell, most specific first.
+func (s *State) RunbooksFor(cellID string) []*Runbook {
+	r := s.Cell(cellID)
 	if r == nil {
 		return nil
 	}
@@ -607,4 +669,15 @@ func (s *State) Runbook(id string) *Runbook {
 		}
 	}
 	return nil
+}
+
+// SharedIdentity counts other cells that reach the provider through the same connection.
+func (s *State) SharedIdentity(cell *Cell) int {
+	n := 0
+	for _, c := range s.Cells {
+		if c.ID != cell.ID && c.ConnectionID == cell.ConnectionID {
+			n++
+		}
+	}
+	return n
 }
