@@ -66,13 +66,18 @@ class Demo:
         self.pause(0.25)
 
     def click(self, locator, pause=1.2):
-        locator.first.scroll_into_view_if_needed()
+        # glide the visible cursor there, then let Playwright click: it retries
+        # if the console re-renders the element between mouse down and up.
+        target = locator.first
+        target.scroll_into_view_if_needed()
         self.pause(0.3)
-        box = locator.first.bounding_box()
-        if not box:
-            raise RuntimeError("no bounding box for locator")
-        self.glide(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-        self.page.mouse.down(); self.pause(0.08); self.page.mouse.up()
+        box = target.bounding_box()
+        if box:
+            self.glide(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        try:
+            target.click(timeout=8000)
+        except Exception:
+            target.dispatch_event("click")
         self.pause(pause)
 
     def type(self, locator, text, delay=45):
@@ -92,7 +97,12 @@ class Demo:
         return self.page.get_by_role("button", name=name)
 
     def hover_read(self, locator, s=2.0):
-        box = locator.first.bounding_box()
+        # a changed sentence must never stall a recording: skip quietly if absent
+        try:
+            locator.first.scroll_into_view_if_needed(timeout=4000)
+            box = locator.first.bounding_box(timeout=4000)
+        except Exception:
+            box = None
         if box:
             self.glide(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
         self.pause(s)
@@ -107,7 +117,7 @@ def part1(d: Demo):
     d.hover_read(d.page.get_by_text("The tenant gets its own runtime"), 2)
     d.click(d.button("Create tenant"), pause=2.5)
     # UpCloud first: sub-account, token, grants
-    d.hover_read(d.page.get_by_text("Create a sub-account in the UpCloud hub"), 2)
+    d.hover_read(d.page.get_by_text("Restrict the sub-account to the servers"), 2)
     d.click(d.button("Validate token"), pause=3)
     # Azure: directory, identity, read scope, write scope
     d.hover_read(d.page.get_by_text("Consent creates a service principal"), 2.2)
