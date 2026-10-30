@@ -37,14 +37,80 @@ const (
 	ConnConnected  = "connected"
 )
 
-// Connection is an identity, a scope and a network path into one provider.
+// Scope levels for Azure role assignments, from broad to narrow.
+const (
+	ScopeManagementGroup = "management-group"
+	ScopeSubscription    = "subscription"
+	ScopeResourceGroup   = "resource-group"
+	ScopeResource        = "resource"
+	ScopeNone            = "none"
+)
+
+// Scope is where an identity's roles are assigned.
+type Scope struct {
+	Level  string `json:"level"`
+	Target string `json:"target"` // subscription id, resource group name, or resource id
+}
+
+// Covers reports whether the scope includes the resource.
+func (sc Scope) Covers(r *Resource) bool {
+	switch sc.Level {
+	case ScopeManagementGroup, ScopeSubscription:
+		return true
+	case ScopeResourceGroup:
+		return r.ResourceGroup != "" && r.ResourceGroup == sc.Target
+	case ScopeResource:
+		return r.ID == sc.Target
+	}
+	return false
+}
+
+// RoleAssignment is one role an identity holds at a scope, as validated.
+type RoleAssignment struct {
+	Identity string `json:"identity"` // read, write
+	Role     string `json:"role"`
+	Scope    Scope  `json:"scope"`
+}
+
+// Connection is an identity, a credential, a scope and a network path into one
+// provider. A tenant may hold several per provider with different scopes.
 type Connection struct {
-	Provider     string       `json:"provider"`
-	Status       string       `json:"status"`
-	Scope        string       `json:"scope,omitempty"`
-	Identity     string       `json:"identity,omitempty"`
-	ValidatedAt  *time.Time   `json:"validatedAt,omitempty"`
-	Capabilities []Capability `json:"capabilities,omitempty"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	Status   string `json:"status"`
+	// Azure
+	Directory      string `json:"directory,omitempty"`      // Entra tenant id
+	AuthMode       string `json:"authMode,omitempty"`       // consent, byo
+	ClientID       string `json:"clientId,omitempty"`       // byo only
+	CredentialKind string `json:"credentialKind,omitempty"` // federated, certificate
+	ReadScope      Scope  `json:"readScope"`
+	WriteScope     Scope  `json:"writeScope"`
+	// UpCloud
+	SubAccount string   `json:"subAccount,omitempty"`
+	Grants     []string `json:"grants,omitempty"`
+	// Validation result
+	Identity     string           `json:"identity,omitempty"`
+	Roles        []RoleAssignment `json:"roles,omitempty"`
+	ValidatedAt  *time.Time       `json:"validatedAt,omitempty"`
+	Capabilities []Capability     `json:"capabilities,omitempty"`
+	Error        string           `json:"error,omitempty"`
+}
+
+// CanWrite reports whether the connection's write identity covers the resource.
+func (c *Connection) CanWrite(r *Resource) bool {
+	if c.Status != ConnConnected || c.Provider != r.Provider {
+		return false
+	}
+	if c.Provider == "upcloud" {
+		for _, g := range c.Grants {
+			if g == "server.power" {
+				return true
+			}
+		}
+		return false
+	}
+	return c.WriteScope.Level != ScopeNone && c.WriteScope.Level != "" && c.WriteScope.Covers(r)
 }
 
 // Probe statuses.
@@ -61,22 +127,40 @@ type Probe struct {
 	Expected []string `json:"expected"`
 }
 
-// Resource is a discovered cloud resource.
+// Resource is a discovered cloud resource. Labels come from provider tags and
+// can be edited in Beacon; apps and runbooks select resources by label.
 type Resource struct {
-	ID       string `json:"id"`
-	Kind     string `json:"kind"`
-	Detail   string `json:"detail"`
-	Service  string `json:"service"`
-	Provider string `json:"provider"`
-	Probe    bool   `json:"probe"`
+	ID            string            `json:"id"`
+	Kind          string            `json:"kind"`
+	Detail        string            `json:"detail"`
+	Provider      string            `json:"provider"`
+	ResourceGroup string            `json:"resourceGroup,omitempty"`
+	ConnectionID  string            `json:"connectionId,omitempty"`
+	Probe         bool              `json:"probe"`
+	Labels        map[string]string `json:"labels"`
 }
 
-// Service groups resources and decides who is paged.
-type Service struct {
-	Name        string `json:"name"`
-	Criticality string `json:"criticality"`
-	Owner       string `json:"owner"`
-	SLO         string `json:"slo"`
+// App groups resources by a label selector and decides who is paged.
+type App struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Selector    map[string]string `json:"selector"`
+	Criticality string            `json:"criticality"`
+	Owner       string            `json:"owner"`
+	SLO         string            `json:"slo"`
+}
+
+// Matches reports whether every selector pair is present on the resource.
+func (a *App) Matches(r *Resource) bool {
+	if len(a.Selector) == 0 {
+		return false
+	}
+	for k, v := range a.Selector {
+		if r.Labels[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // Tool policies.
@@ -316,23 +400,23 @@ type Scenario struct {
 
 // State is everything the console shows for one tenant.
 type State struct {
-	User        *User                  `json:"user"`
-	Tenant      *Tenant                `json:"tenant"`
-	Connections map[string]*Connection `json:"connections"`
-	Probe       Probe                  `json:"probe"`
-	Resources   []Resource             `json:"resources"`
-	Services    []Service              `json:"services"`
-	Responders  []*Responder           `json:"responders"`
-	Agents      []*AgentDef            `json:"agents"`
-	Findings    []*Finding             `json:"findings"`
-	Runs        []*Run                 `json:"runs"`
-	Approvals   []*Approval            `json:"approvals"`
-	Activity    []Activity             `json:"activity"`
-	Chat        []*ChatMessage         `json:"chat"`
-	Scenarios   []*Scenario            `json:"scenarios"`
-	Usage       map[string]*Usage      `json:"usage"`    // by agent id
-	Reasoner    string                 `json:"reasoner"` // claude or scripted
-	Model       string                 `json:"model"`
+	User        *User             `json:"user"`
+	Tenant      *Tenant           `json:"tenant"`
+	Connections []*Connection     `json:"connections"`
+	Probe       Probe             `json:"probe"`
+	Resources   []Resource        `json:"resources"`
+	Apps        []*App            `json:"apps"`
+	Responders  []*Responder      `json:"responders"`
+	Agents      []*AgentDef       `json:"agents"`
+	Findings    []*Finding        `json:"findings"`
+	Runs        []*Run            `json:"runs"`
+	Approvals   []*Approval       `json:"approvals"`
+	Activity    []Activity        `json:"activity"`
+	Chat        []*ChatMessage    `json:"chat"`
+	Scenarios   []*Scenario       `json:"scenarios"`
+	Usage       map[string]*Usage `json:"usage"`    // by agent id
+	Reasoner    string            `json:"reasoner"` // claude or scripted
+	Model       string            `json:"model"`
 }
 
 // Run returns the run with the id, or nil.
@@ -400,6 +484,78 @@ func (s *State) OpenFinding(responderID, resource string) *Finding {
 	for _, f := range s.Findings {
 		if f.ResponderID == responderID && f.Resource == resource && f.Status != FindingResolved && f.Status != FindingEscalated {
 			return f
+		}
+	}
+	return nil
+}
+
+// Resource returns the resource with the id, or nil.
+func (s *State) Resource(id string) *Resource {
+	for i := range s.Resources {
+		if s.Resources[i].ID == id {
+			return &s.Resources[i]
+		}
+	}
+	return nil
+}
+
+// AppOf returns the most specific app whose selector matches the resource, or nil.
+func (s *State) AppOf(r *Resource) *App {
+	var best *App
+	for _, a := range s.Apps {
+		if a.Matches(r) && (best == nil || len(a.Selector) > len(best.Selector)) {
+			best = a
+		}
+	}
+	return best
+}
+
+// AppName returns the app name for a resource id, or "Unassigned".
+func (s *State) AppName(resourceID string) string {
+	if r := s.Resource(resourceID); r != nil {
+		if a := s.AppOf(r); a != nil {
+			return a.Name
+		}
+	}
+	return "Unassigned"
+}
+
+// App returns the app with the id, or nil.
+func (s *State) App(id string) *App {
+	for _, a := range s.Apps {
+		if a.ID == id {
+			return a
+		}
+	}
+	return nil
+}
+
+// Connection returns the connection with the id, or nil.
+func (s *State) Connection(id string) *Connection {
+	for _, c := range s.Connections {
+		if c.ID == id {
+			return c
+		}
+	}
+	return nil
+}
+
+// ConnectedProviders counts providers with at least one connected connection.
+func (s *State) ConnectedProviders() map[string]bool {
+	out := map[string]bool{}
+	for _, c := range s.Connections {
+		if c.Status == ConnConnected {
+			out[c.Provider] = true
+		}
+	}
+	return out
+}
+
+// WriteConnection returns a connection whose write identity covers the resource, or nil.
+func (s *State) WriteConnection(r *Resource) *Connection {
+	for _, c := range s.Connections {
+		if c.CanWrite(r) {
+			return c
 		}
 	}
 	return nil

@@ -39,7 +39,6 @@ func NewOrchestrator(st *store.Store, w *world.World, gate *Gate, r Reasoner, mo
 type Signal struct {
 	ResponderID string
 	Resource    string
-	Service     string
 	Title       string
 	Severity    string
 	Text        string
@@ -63,7 +62,7 @@ func (o *Orchestrator) HandleSignal(sig Signal) string {
 		}
 		fid := o.st.NextID("F", 0x8d)
 		runID = o.st.NextID("inv", 0xa6)
-		f := &domain.Finding{ID: fid, Title: sig.Title, Service: sig.Service, Resource: sig.Resource, Severity: sig.Severity, Status: domain.FindingInvestigating, RunID: runID, ResponderID: r.ID, CreatedAt: time.Now()}
+		f := &domain.Finding{ID: fid, Title: sig.Title, Service: s.AppName(sig.Resource), Resource: sig.Resource, Severity: sig.Severity, Status: domain.FindingInvestigating, RunID: runID, ResponderID: r.ID, CreatedAt: time.Now()}
 		run := &domain.Run{ID: runID, Agent: r.Agent, Trigger: "signal", Task: sig.Title, FindingID: fid, ResponderID: r.ID, Status: domain.RunRunning, Outcome: "Running", StartedAt: time.Now(), Messages: []*domain.Message{}, Evidence: []domain.Evidence{}, Hypotheses: []domain.Hypothesis{}, Chain: []domain.ChainStep{}, Questions: []domain.QA{}}
 		run.Messages = append(run.Messages,
 			&domain.Message{ID: o.st.NextID("m", 0), Role: domain.RoleSignal, Title: "Signal loop", Text: sig.Text + fmt.Sprintf(" Responder %s matched.", r.ID), At: time.Now()},
@@ -94,12 +93,7 @@ func (o *Orchestrator) StartInvestigation(resource, task, by string) (string, er
 	var runID string
 	var errOut error
 	o.st.Update(func(s *domain.State) []store.Event {
-		var res *domain.Resource
-		for i := range s.Resources {
-			if s.Resources[i].ID == resource {
-				res = &s.Resources[i]
-			}
-		}
+		res := s.Resource(resource)
 		if res == nil {
 			errOut = fmt.Errorf("no resource %q in this tenant", resource)
 			return nil
@@ -114,7 +108,7 @@ func (o *Orchestrator) StartInvestigation(resource, task, by string) (string, er
 		}
 		fid := o.st.NextID("F", 0x8d)
 		runID = o.st.NextID("inv", 0xa6)
-		f := &domain.Finding{ID: fid, Title: task, Service: res.Service, Resource: resource, Severity: "info", Status: domain.FindingInvestigating, RunID: runID, ResponderID: operatorResponder.ID, CreatedAt: time.Now()}
+		f := &domain.Finding{ID: fid, Title: task, Service: s.AppName(resource), Resource: resource, Severity: "info", Status: domain.FindingInvestigating, RunID: runID, ResponderID: operatorResponder.ID, CreatedAt: time.Now()}
 		run := &domain.Run{ID: runID, Agent: "investigator", Trigger: "user", Task: task, FindingID: fid, ResponderID: operatorResponder.ID, Status: domain.RunRunning, Outcome: "Running", StartedAt: time.Now(), Messages: []*domain.Message{}, Evidence: []domain.Evidence{}, Hypotheses: []domain.Hypothesis{}, Chain: []domain.ChainStep{}, Questions: []domain.QA{}}
 		run.Messages = append(run.Messages, &domain.Message{ID: o.st.NextID("m", 0), Role: domain.RoleOrchestrator, Agent: "orchestrator", Title: "Orchestrator", Text: fmt.Sprintf("%s asked: %q. Starting the investigator on %s under the operator-request policy (reads allowed, changes need approval).", by, task, resource), At: time.Now()})
 		s.Findings = append([]*domain.Finding{f}, s.Findings...)
@@ -458,8 +452,9 @@ func (o *Orchestrator) contextText(s *domain.State) string {
 		fmt.Fprintf(&b, "Tenant %s (%s), cell %s. ", s.Tenant.Name, s.Tenant.Env, s.Tenant.Cell)
 	}
 	fmt.Fprintf(&b, "Probes online: %d of %d. Resources: ", len(s.Probe.Hosts), len(s.Probe.Expected))
-	for _, r := range s.Resources {
-		fmt.Fprintf(&b, "%s (%s, %s); ", r.ID, r.Kind, r.Service)
+	for i := range s.Resources {
+		r := &s.Resources[i]
+		fmt.Fprintf(&b, "%s (%s, app %s); ", r.ID, r.Kind, s.AppName(r.ID))
 	}
 	open := 0
 	for _, f := range s.Findings {

@@ -307,6 +307,44 @@ func (t *Toolbox) propose(ctx context.Context, in map[string]any) (string, error
 
 // remediate is the deterministic remediator: it runs exactly the approved action.
 func (t *Toolbox) remediate(action string, args map[string]any, cmd, why string) (string, error) {
+	// the remediator needs a write identity whose scope covers the resource
+	var writeErr error
+	var conn string
+	t.st.View(func(s *domain.State) {
+		res := s.Resource(str(args, "resource"))
+		if res == nil {
+			writeErr = fmt.Errorf("unknown resource %q", str(args, "resource"))
+			return
+		}
+		if action == "notify" {
+			return
+		}
+		c := s.WriteConnection(res)
+		if c == nil {
+			writeErr = fmt.Errorf("no %s connection has a write identity covering %s", res.Provider, res.ID)
+			return
+		}
+		conn = c.Name
+	})
+	if writeErr != nil {
+		t.st.Update(func(s *domain.State) []store.Event {
+			r := s.Run(t.runID)
+			r.Status = domain.RunDone
+			r.Outcome = "Blocked: no write identity"
+			t.appendMsg(r, domain.RoleExecutor, "remediator", "write identity", cmd+"\nstatus: Not run\n"+writeErr.Error()+". Add a write scope to the connection, or run this by hand.")
+			evs := []store.Event{store.RunEvent(r)}
+			if f := s.Finding(r.FindingID); f != nil {
+				f.Status = domain.FindingEscalated
+				evs = append(evs, store.FindingEvent(f))
+				evs = append(evs, endScenario(s, f)...)
+			}
+			return append(evs, store.Activity(s, "action", "Remediator blocked: "+writeErr.Error(), t.runID, false))
+		})
+		return "The remediator could not run the action: " + writeErr.Error() + ". Conclude with what the operator should do by hand.", nil
+	}
+	if conn != "" {
+		why += " via " + conn
+	}
 	t.st.Update(func(s *domain.State) []store.Event {
 		r := s.Run(t.runID)
 		r.Status = domain.RunExecuting

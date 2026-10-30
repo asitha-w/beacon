@@ -40,6 +40,10 @@ Settings are environment variables; see `.env.example`. `BEACON_MODEL` defaults 
 5. The **remediator** executes the approved action against the world and records the provider response. It has no model.
 6. The **verifier** marks the cause Verified only when every claim has a pointer, and the signal loop re-reads the triggering signal before the finding is resolved.
 
+**Connections** are one identity at one scope. An Azure connection needs the Entra directory, an identity (consent to the Beacon app, or bring your own app registration with a federated credential or certificate), a read scope for discovery and an optional, narrower write scope for fixes. Validation lists the role assignments and derives the capability list from them. The remediator refuses an approved action when no connection's write scope covers the resource. An UpCloud connection is a sub-account token whose grants are the frame.
+
+**Labels and apps.** Resources carry labels imported from provider tags and editable in Beacon. An app is a label selector; resources join by matching and findings are attributed to the most specific app. Runbooks will attach to the same labels.
+
 The operator talks to the orchestrator on the Ask Beacon page. It can list findings, describe resources, and start an investigation on request. Every model call is accounted per agent and per run on the Agents and Consumption pages.
 
 ## Scripted mode and live mode

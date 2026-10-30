@@ -20,7 +20,6 @@ import (
 type Rule struct {
 	Responder string
 	Resource  string
-	Service   string
 	Title     string
 	Severity  string
 	Hold      int // consecutive ticks the condition must hold
@@ -55,19 +54,19 @@ func above(host, metric string, limit float64) func(*world.World) bool {
 
 func defaultRules() []Rule {
 	return []Rule{
-		{Responder: "disk-pressure-linux", Resource: "web-01", Service: "Shop web", Title: "Disk filling on web-01", Severity: "warning", Hold: 3,
+		{Responder: "disk-pressure-linux", Resource: "web-01", Title: "Disk filling on web-01", Severity: "warning", Hold: 3,
 			Check: above("web-01", "disk_used_percent", 90),
 			Text: func(w *world.World) string {
 				v, _ := w.Metric("web-01", "disk_used_percent")
 				return fmt.Sprintf("disk_used_percent on web-01 crossed 90%% and held (now %.0f%%).", v)
 			}},
-		{Responder: "release-regression", Resource: "aks-shop", Service: "Shop web", Title: "Error rate on shop-api above 5% after rollout", Severity: "warning", Hold: 3,
+		{Responder: "release-regression", Resource: "aks-shop", Title: "Error rate on shop-api above 5% after rollout", Severity: "warning", Hold: 3,
 			Check: above("aks-shop", "error_rate_percent", 5),
 			Text: func(w *world.World) string {
 				v, _ := w.Metric("aks-shop", "error_rate_percent")
 				return fmt.Sprintf("error_rate_percent on aks-shop crossed 5%% and held (now %.1f%%).", v)
 			}},
-		{Responder: "service-down", Resource: "edge-01", Service: "Edge", Title: "nginx on edge-01 is not responding", Severity: "critical", Hold: 3,
+		{Responder: "service-down", Resource: "edge-01", Title: "nginx on edge-01 is not responding", Severity: "critical", Hold: 3,
 			Check: func(w *world.World) bool {
 				v, ok := w.Metric("edge-01", "http_up")
 				return ok && v == 0 && w.HostState("edge-01") == "started"
@@ -75,7 +74,7 @@ func defaultRules() []Rule {
 			Text: func(w *world.World) string {
 				return "http_up on edge-01 has been 0 for 3 checks while the host is started."
 			}},
-		{Responder: "server-stopped", Resource: "edge-01", Service: "Edge", Title: "edge-01 is stopped without an operator event", Severity: "critical", Hold: 2,
+		{Responder: "server-stopped", Resource: "edge-01", Title: "edge-01 is stopped without an operator event", Severity: "critical", Hold: 2,
 			Check: func(w *world.World) bool { return w.HostState("edge-01") == "stopped" && !w.HasOperatorStop("edge-01") },
 			Text: func(w *world.World) string {
 				return "UpCloud reports edge-01 stopped and no operator stop request is recorded."
@@ -118,7 +117,7 @@ func (l *Loop) step() {
 			l.hold[key] = 0
 		}
 		if l.hold[key] == r.Hold {
-			l.orch.HandleSignal(agent.Signal{ResponderID: r.Responder, Resource: r.Resource, Service: r.Service, Title: r.Title, Severity: r.Severity, Text: "Signal loop: " + r.Text(l.w)})
+			l.orch.HandleSignal(agent.Signal{ResponderID: r.Responder, Resource: r.Resource, Title: r.Title, Severity: r.Severity, Text: "Signal loop: " + r.Text(l.w)})
 		}
 	}
 	// verification: re-read the signal for findings whose fix ran

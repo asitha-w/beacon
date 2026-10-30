@@ -18,7 +18,10 @@ export function apply(ev) {
     case 'snapshot': store.state = ev.data; return 'full';
     case 'user': s.user = ev.data; return 'full';
     case 'tenant': s.tenant = ev.data; return 'full';
-    case 'connection': s.connections[ev.data.provider] = ev.data; return 'full';
+    case 'connection': upsert(s.connections, ev.data); return 'full';
+    case 'connections': s.connections = ev.data; return 'full';
+    case 'resources': s.resources = ev.data; return 'full';
+    case 'apps': s.apps = ev.data; return 'full';
     case 'probe': s.probe = ev.data; return 'full';
     case 'finding': upsert(s.findings, ev.data, 'id', true); return 'full';
     case 'run': upsert(s.runs, ev.data, 'id', true); return 'full';
@@ -60,6 +63,11 @@ export const sel = {
   approval: (id) => store.state.approvals.find((a) => a.id === id),
   pendingApprovals: () => store.state.approvals.filter((a) => a.status === 'pending'),
   agent: (id) => store.state.agents.find((a) => a.id === id),
+  conns: (provider) => store.state.connections.filter((c) => c.provider === provider),
+  connected: (provider) => store.state.connections.some((c) => c.provider === provider && c.status === 'connected'),
+  resource: (id) => store.state.resources.find((r) => r.id === id),
+  appOf: (r) => { let best = null; store.state.apps.forEach((a) => { const keys = Object.keys(a.selector || {}); if (keys.length && keys.every((k) => (r.labels || {})[k] === a.selector[k]) && (!best || keys.length > Object.keys(best.selector).length)) best = a; }); return best; },
+  resourcesOf: (app) => store.state.resources.filter((r) => sel.appOf(r) && sel.appOf(r).id === app.id),
   metric: (host, k) => (store.metrics.hosts[host] || {})[k],
   series: (host, k) => ((store.metrics.series[host] || {})[k] || []),
 };

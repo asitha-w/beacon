@@ -44,7 +44,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("POST /api/tenant", s.tenant)
-	mux.HandleFunc("POST /api/connections/{provider}/validate", s.validate)
+	mux.HandleFunc("POST /api/connections", s.createConnection)
+	mux.HandleFunc("DELETE /api/connections/{id}", s.deleteConnection)
+	mux.HandleFunc("POST /api/apps", s.saveApp)
+	mux.HandleFunc("DELETE /api/apps/{id}", s.deleteApp)
+	mux.HandleFunc("POST /api/resources/{id}/labels", s.setLabels)
 	mux.HandleFunc("POST /api/probe/install", s.installProbe)
 	mux.HandleFunc("POST /api/approvals/{id}", s.decide)
 	mux.HandleFunc("POST /api/chat", s.chat)
@@ -61,6 +65,9 @@ func logRequests(h http.Handler, log *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/events" {
 			log.Info("api", "method", r.Method, "path", r.URL.Path)
+		} else {
+			// the console is small and changes often; make the browser revalidate
+			w.Header().Set("Cache-Control", "no-cache")
 		}
 		h.ServeHTTP(w, r)
 	})
@@ -167,57 +174,194 @@ func (s *Server) tenant(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-func (s *Server) validate(w http.ResponseWriter, r *http.Request) {
-	provider := r.PathValue("provider")
-	var in struct{ Subscription, Token string }
-	_ = readJSON(r, &in)
-	var known bool
-	s.st.Update(func(st *domain.State) []store.Event {
-		c := st.Connections[provider]
-		if c == nil {
-			return nil
-		}
-		known = true
-		c.Status = domain.ConnValidating
-		return []store.Event{{Type: "connection", Data: c}}
-	})
-	if !known {
-		writeErr(w, 404, fmt.Errorf("unknown provider %q", provider))
+// createConnection records a connection and validates it in the background.
+func (s *Server) createConnection(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Provider, Name, Directory, AuthMode, ClientID, CredentialKind string
+		ReadScope, WriteScope                                         domain.Scope
+		SubAccount, Token                                             string
+		Grants                                                        []string
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, 400, err)
 		return
 	}
+	if in.Provider != "azure" && in.Provider != "upcloud" {
+		writeErr(w, 400, errors.New("provider must be azure or upcloud"))
+		return
+	}
+	if in.Provider == "azure" && in.Directory == "" {
+		writeErr(w, 400, errors.New("the Entra directory (tenant id) is required"))
+		return
+	}
+	if in.Provider == "azure" && in.ReadScope.Target == "" {
+		writeErr(w, 400, errors.New("a read scope is required"))
+		return
+	}
+	var c *domain.Connection
+	s.st.Update(func(st *domain.State) []store.Event {
+		c = &domain.Connection{ID: s.st.NextID("conn", 0), Provider: in.Provider, Name: in.Name, Status: domain.ConnValidating,
+			Directory: in.Directory, AuthMode: in.AuthMode, ClientID: in.ClientID, CredentialKind: in.CredentialKind, ReadScope: in.ReadScope, WriteScope: in.WriteScope,
+			SubAccount: in.SubAccount, Grants: in.Grants}
+		if c.Name == "" {
+			if in.Provider == "azure" {
+				c.Name = "Azure · " + c.ReadScope.Level + " " + c.ReadScope.Target
+			} else {
+				c.Name = "UpCloud · " + c.SubAccount
+			}
+		}
+		if c.AuthMode == "" {
+			c.AuthMode = "consent"
+		}
+		if c.CredentialKind == "" {
+			c.CredentialKind = "federated"
+		}
+		if c.WriteScope.Level == "" {
+			c.WriteScope.Level = domain.ScopeNone
+		}
+		st.Connections = append(st.Connections, c)
+		return []store.Event{{Type: "connection", Data: c}}
+	})
+	id := c.ID
 	go func() {
 		time.Sleep(1800 * time.Millisecond)
 		s.st.Update(func(st *domain.State) []store.Event {
-			c := st.Connections[provider]
+			c := st.Connection(id)
+			if c == nil {
+				return nil
+			}
 			now := time.Now()
 			c.Status = domain.ConnConnected
 			c.ValidatedAt = &now
 			var text string
-			if provider == "azure" {
-				sub := in.Subscription
-				if len(sub) > 8 {
-					sub = sub[:8] + "…"
-				}
-				c.Scope = "Subscription " + sub + " (Shop production)"
-				c.Identity = "Entra app Beacon, federated credential, Reader"
-				c.Capabilities = domain.AzureCapabilities()
-				text = "Azure connected. Discovery found 3 resources in the subscription."
+			n := 0
+			if c.Provider == "azure" {
+				domain.ValidateAzure(c)
 			} else {
-				c.Scope = "Sub-account beacon-ro"
-				c.Identity = "API token, read permissions"
-				c.Capabilities = domain.UpCloudCapabilities()
-				text = "UpCloud connected. Discovery found 2 resources."
+				domain.ValidateUpCloud(c)
 			}
-			return []store.Event{{Type: "connection", Data: c}, store.Activity(st, "run", text, "", false)}
+			for i := range st.Resources {
+				res := &st.Resources[i]
+				if res.Provider == c.Provider && res.ConnectionID == "" && c.ReadScope.Covers(res) || (c.Provider == "upcloud" && res.Provider == "upcloud" && res.ConnectionID == "") {
+					res.ConnectionID = c.ID
+					n++
+				}
+			}
+			text = fmt.Sprintf("%s connected. Discovery found %d resources in scope.", c.Name, n)
+			return []store.Event{{Type: "connection", Data: c}, {Type: "resources", Data: st.Resources}, store.Activity(st, "run", text, "", false)}
 		})
 	}()
-	writeJSON(w, 202, map[string]any{"ok": true})
+	writeJSON(w, 202, map[string]any{"ok": true, "id": id})
+}
+
+func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var found bool
+	s.st.Update(func(st *domain.State) []store.Event {
+		for i, c := range st.Connections {
+			if c.ID == id {
+				found = true
+				st.Connections = append(st.Connections[:i], st.Connections[i+1:]...)
+				for j := range st.Resources {
+					if st.Resources[j].ConnectionID == id {
+						st.Resources[j].ConnectionID = ""
+					}
+				}
+				return []store.Event{{Type: "connections", Data: st.Connections}, {Type: "resources", Data: st.Resources}, store.Activity(st, "run", "Connection "+c.Name+" removed.", "", false)}
+			}
+		}
+		return nil
+	})
+	if !found {
+		writeErr(w, 404, errors.New("no such connection"))
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// saveApp creates or updates an app by id.
+func (s *Server) saveApp(w http.ResponseWriter, r *http.Request) {
+	var in domain.App
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, 400, err)
+		return
+	}
+	if strings.TrimSpace(in.Name) == "" || len(in.Selector) == 0 {
+		writeErr(w, 400, errors.New("name and at least one selector label are required"))
+		return
+	}
+	by := s.userName()
+	s.st.Update(func(st *domain.State) []store.Event {
+		if in.ID == "" {
+			in.ID = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(in.Name), " ", "-"))
+		}
+		if a := st.App(in.ID); a != nil {
+			*a = in
+		} else {
+			cp := in
+			st.Apps = append(st.Apps, &cp)
+		}
+		for _, f := range st.Findings {
+			f.Service = st.AppName(f.Resource)
+		}
+		return []store.Event{{Type: "apps", Data: st.Apps}, store.Activity(st, "run", fmt.Sprintf("%s saved app %s.", by, in.Name), "", false)}
+	})
+	writeJSON(w, 200, map[string]any{"ok": true, "id": in.ID})
+}
+
+func (s *Server) deleteApp(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	s.st.Update(func(st *domain.State) []store.Event {
+		for i, a := range st.Apps {
+			if a.ID == id {
+				st.Apps = append(st.Apps[:i], st.Apps[i+1:]...)
+				break
+			}
+		}
+		for _, f := range st.Findings {
+			f.Service = st.AppName(f.Resource)
+		}
+		return []store.Event{{Type: "apps", Data: st.Apps}}
+	})
+	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// setLabels replaces the labels on a resource.
+func (s *Server) setLabels(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Labels map[string]string }
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, 400, err)
+		return
+	}
+	var found bool
+	by := s.userName()
+	s.st.Update(func(st *domain.State) []store.Event {
+		res := st.Resource(r.PathValue("id"))
+		if res == nil {
+			return nil
+		}
+		found = true
+		res.Labels = in.Labels
+		if res.Labels == nil {
+			res.Labels = map[string]string{}
+		}
+		for _, f := range st.Findings {
+			f.Service = st.AppName(f.Resource)
+		}
+		return []store.Event{{Type: "resources", Data: st.Resources}, store.Activity(st, "run", fmt.Sprintf("%s relabelled %s.", by, res.ID), "", false)}
+	})
+	if !found {
+		writeErr(w, 404, errors.New("no such resource"))
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 func (s *Server) installProbe(w http.ResponseWriter, _ *http.Request) {
 	var ready bool
 	s.st.Update(func(st *domain.State) []store.Event {
-		if st.Connections["azure"].Status != domain.ConnConnected || st.Connections["upcloud"].Status != domain.ConnConnected {
+		cp := st.ConnectedProviders()
+		if !cp["azure"] || !cp["upcloud"] {
 			return nil
 		}
 		ready = true
@@ -316,6 +460,7 @@ func (s *Server) responder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var found bool
+	by := s.userName()
 	s.st.Update(func(st *domain.State) []store.Event {
 		rp := st.Responder(r.PathValue("id"))
 		if rp == nil {
@@ -323,7 +468,7 @@ func (s *Server) responder(w http.ResponseWriter, r *http.Request) {
 		}
 		found = true
 		rp.Mode = in.Mode
-		return []store.Event{{Type: "responder", Data: rp}, store.Activity(st, "policy", fmt.Sprintf("%s set %s to %s.", s.userName(), rp.ID, in.Mode), "", false)}
+		return []store.Event{{Type: "responder", Data: rp}, store.Activity(st, "policy", fmt.Sprintf("%s set %s to %s.", by, rp.ID, in.Mode), "", false)}
 	})
 	if !found {
 		writeErr(w, 404, errors.New("no such responder"))
@@ -342,6 +487,7 @@ func (s *Server) agentUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var found bool
+	by := s.userName()
 	s.st.Update(func(st *domain.State) []store.Event {
 		a := st.Agent(r.PathValue("id"))
 		if a == nil {
@@ -357,7 +503,7 @@ func (s *Server) agentUpdate(w http.ResponseWriter, r *http.Request) {
 				a.Effort = *in.Effort
 			}
 		}
-		return []store.Event{{Type: "agent", Data: a}, store.Activity(st, "policy", fmt.Sprintf("%s updated agent %s: enabled=%v effort=%s.", s.userName(), a.ID, a.Enabled, a.Effort), "", false)}
+		return []store.Event{{Type: "agent", Data: a}, store.Activity(st, "policy", fmt.Sprintf("%s updated agent %s: enabled=%v effort=%s.", by, a.ID, a.Enabled, a.Effort), "", false)}
 	})
 	if !found {
 		writeErr(w, 404, errors.New("no such agent"))

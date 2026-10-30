@@ -3,23 +3,29 @@ package domain
 // Seed data for a fresh tenant. In the real product these come from discovery
 // and the tenant's own configuration; here they describe the simulated estate.
 
-// SeedResources is the discovered estate.
+// SeedResources is the discovered estate. Labels mirror the provider tags.
 func SeedResources() []Resource {
 	return []Resource{
-		{ID: "web-01", Kind: "Azure VM", Detail: "Standard_B2s · westeurope", Service: "Shop web", Provider: "azure", Probe: true},
-		{ID: "aks-shop", Kind: "AKS cluster", Detail: "3 nodes · 1.31", Service: "Shop web", Provider: "azure", Probe: true},
-		{ID: "la-shop", Kind: "Log Analytics", Detail: "workspace", Service: "Shop web", Provider: "azure"},
-		{ID: "db-01", Kind: "UpCloud managed PostgreSQL", Detail: "2 vCPU · fi-hel2", Service: "Shop data", Provider: "upcloud"},
-		{ID: "edge-01", Kind: "UpCloud server", Detail: "1 vCPU 1 GB · de-fra1", Service: "Edge", Provider: "upcloud", Probe: true},
+		{ID: "web-01", Kind: "Azure VM", Detail: "Standard_B2s · westeurope", Provider: "azure", ResourceGroup: "rg-shop-prod", Probe: true,
+			Labels: map[string]string{"app": "shop", "tier": "web", "env": "production", "os": "linux"}},
+		{ID: "aks-shop", Kind: "AKS cluster", Detail: "3 nodes · 1.31", Provider: "azure", ResourceGroup: "rg-shop-prod", Probe: true,
+			Labels: map[string]string{"app": "shop", "tier": "api", "env": "production", "platform": "kubernetes"}},
+		{ID: "la-shop", Kind: "Log Analytics", Detail: "workspace", Provider: "azure", ResourceGroup: "rg-shop-prod",
+			Labels: map[string]string{"app": "shop", "tier": "observability", "env": "production"}},
+		{ID: "db-01", Kind: "UpCloud managed PostgreSQL", Detail: "2 vCPU · fi-hel2", Provider: "upcloud",
+			Labels: map[string]string{"app": "shop", "tier": "data", "env": "production"}},
+		{ID: "edge-01", Kind: "UpCloud server", Detail: "1 vCPU 1 GB · de-fra1", Provider: "upcloud", Probe: true,
+			Labels: map[string]string{"app": "edge", "tier": "proxy", "env": "production", "os": "linux"}},
 	}
 }
 
-// SeedServices groups the estate.
-func SeedServices() []Service {
-	return []Service{
-		{Name: "Shop web", Criticality: "Critical", Owner: "platform@shop.example", SLO: "99.9% availability, 30d"},
-		{Name: "Shop data", Criticality: "Critical", Owner: "data@shop.example", SLO: "none yet"},
-		{Name: "Edge", Criticality: "Standard", Owner: "ops@shop.example", SLO: "none yet"},
+// SeedApps groups the estate by label selector.
+func SeedApps() []*App {
+	return []*App{
+		{ID: "shop-web", Name: "Shop web", Selector: map[string]string{"app": "shop", "tier": "web"}, Criticality: "Critical", Owner: "platform@shop.example", SLO: "99.9% availability, 30d"},
+		{ID: "shop-api", Name: "Shop API", Selector: map[string]string{"app": "shop", "tier": "api"}, Criticality: "Critical", Owner: "platform@shop.example", SLO: "99.9% availability, 30d"},
+		{ID: "shop-data", Name: "Shop data", Selector: map[string]string{"app": "shop", "tier": "data"}, Criticality: "Critical", Owner: "data@shop.example", SLO: "none yet"},
+		{ID: "edge", Name: "Edge", Selector: map[string]string{"app": "edge"}, Criticality: "Standard", Owner: "ops@shop.example", SLO: "none yet"},
 	}
 }
 
@@ -72,53 +78,102 @@ func SeedScenarios() []*Scenario {
 	}
 }
 
-// AzureCapabilities is what the Azure connection offers once validated.
-func AzureCapabilities() []Capability {
-	return []Capability{
+// ValidateAzure simulates validation: it derives the role assignments the
+// identity would hold from the requested scopes, then the capabilities from
+// the roles. Log Analytics Reader is never granted by consent alone, so that
+// capability shows as missing until the customer assigns it.
+func ValidateAzure(c *Connection) {
+	c.Identity = "Service principal Beacon (" + c.AuthMode + ", " + c.CredentialKind + ")"
+	if c.AuthMode == "byo" && c.ClientID != "" {
+		c.Identity = "App registration " + short(c.ClientID) + " (" + c.CredentialKind + ")"
+	}
+	c.Roles = []RoleAssignment{
+		{Identity: "read", Role: "Reader", Scope: c.ReadScope},
+		{Identity: "read", Role: "Monitoring Reader", Scope: c.ReadScope},
+		{Identity: "read", Role: "Azure Kubernetes Service RBAC Reader", Scope: c.ReadScope},
+	}
+	hasWrite := c.WriteScope.Level != ScopeNone && c.WriteScope.Level != ""
+	if hasWrite {
+		c.Roles = append(c.Roles,
+			RoleAssignment{Identity: "write", Role: "Virtual Machine Contributor", Scope: c.WriteScope},
+			RoleAssignment{Identity: "write", Role: "Azure Kubernetes Service RBAC Writer", Scope: c.WriteScope})
+	}
+	writeState := "missing"
+	writeDetail := "no write identity on this connection"
+	if hasWrite {
+		writeState = "available"
+		writeDetail = "Run Command · write identity at " + c.WriteScope.Level + " " + c.WriteScope.Target
+	}
+	c.Capabilities = []Capability{
 		{Name: "Resource discovery", Detail: "Resource Graph · Reader", State: "available"},
-		{Name: "Platform metrics", Detail: "Azure Monitor metrics", State: "available"},
-		{Name: "Resource health verdict", Detail: "Resource Health API", State: "available"},
+		{Name: "Platform metrics", Detail: "Azure Monitor · Monitoring Reader", State: "available"},
+		{Name: "Resource health verdict", Detail: "Resource Health API · Reader", State: "available"},
 		{Name: "Activity log, who changed what", Detail: "Activity Log · Reader", State: "available"},
-		{Name: "Log Analytics queries", Detail: "Log Analytics Reader", State: "missing"},
-		{Name: "Kubernetes API, aks-shop", Detail: "Entra RBAC · view ClusterRole", State: "available"},
-		{Name: "In-guest fixes", Detail: "Run Command · write identity", State: "available"},
-		{Name: "Memory, disk, processes", Detail: "Beacon probe on web-01", State: "available"},
+		{Name: "Log Analytics queries", Detail: "needs Log Analytics Reader on the workspace", State: "missing"},
+		{Name: "Kubernetes API", Detail: "Entra RBAC · AKS RBAC Reader", State: "available"},
+		{Name: "In-guest fixes", Detail: writeDetail, State: writeState},
+		{Name: "Rollouts on AKS", Detail: map[bool]string{true: "AKS RBAC Writer · write identity", false: "no write identity on this connection"}[hasWrite], State: writeState},
 	}
 }
 
-// UpCloudCapabilities is what the UpCloud connection offers once validated.
-func UpCloudCapabilities() []Capability {
-	return []Capability{
-		{Name: "Server inventory and state", Detail: "GET /1.3/server", State: "available"},
-		{Name: "Managed database metrics", Detail: "GET /1.3/database/{id}/metrics", State: "available"},
-		{Name: "Power operations", Detail: "POST /1.3/server/{id}/start", State: "available"},
-		{Name: "Host CPU, memory, disk", Detail: "Beacon probe on edge-01", State: "available"},
+// ValidateUpCloud simulates validation of a sub-account token.
+func ValidateUpCloud(c *Connection) {
+	if c.SubAccount == "" {
+		c.SubAccount = "beacon-ro"
+	}
+	c.Identity = "API token for sub-account " + c.SubAccount
+	if len(c.Grants) == 0 {
+		c.Grants = []string{"server.read", "server.power", "database.read"}
+	}
+	has := func(g string) bool {
+		for _, x := range c.Grants {
+			if x == g {
+				return true
+			}
+		}
+		return false
+	}
+	state := func(ok bool) string {
+		if ok {
+			return "available"
+		}
+		return "missing"
+	}
+	c.Capabilities = []Capability{
+		{Name: "Server inventory and state", Detail: "GET /1.3/server · server.read", State: state(has("server.read"))},
+		{Name: "Managed database metrics", Detail: "GET /1.3/database/{id}/metrics · database.read", State: state(has("database.read"))},
+		{Name: "Power operations", Detail: "POST /1.3/server/{id}/start · server.power", State: state(has("server.power"))},
+		{Name: "Host CPU, memory, disk", Detail: "Beacon probe on servers", State: "available"},
 		{Name: "Activity log", State: "none"},
 		{Name: "Resource health verdict", State: "none"},
 	}
 }
 
+func short(s string) string {
+	if len(s) > 8 {
+		return s[:8] + "…"
+	}
+	return s
+}
+
 // NewState returns an empty tenant state with seed data.
 func NewState(model, reasoner string) *State {
 	s := &State{
-		Connections: map[string]*Connection{
-			"azure":   {Provider: "azure", Status: ConnNone},
-			"upcloud": {Provider: "upcloud", Status: ConnNone},
-		},
-		Probe:      Probe{Status: ProbeNone, Hosts: []string{}, Expected: []string{"edge-01", "web-01", "aks-shop"}},
-		Resources:  SeedResources(),
-		Services:   SeedServices(),
-		Responders: SeedResponders(),
-		Agents:     SeedAgents(model),
-		Findings:   []*Finding{},
-		Runs:       []*Run{},
-		Approvals:  []*Approval{},
-		Activity:   []Activity{},
-		Chat:       []*ChatMessage{},
-		Scenarios:  SeedScenarios(),
-		Usage:      map[string]*Usage{},
-		Reasoner:   reasoner,
-		Model:      model,
+		Connections: []*Connection{},
+		Probe:       Probe{Status: ProbeNone, Hosts: []string{}, Expected: []string{"edge-01", "web-01", "aks-shop"}},
+		Resources:   SeedResources(),
+		Apps:        SeedApps(),
+		Responders:  SeedResponders(),
+		Agents:      SeedAgents(model),
+		Findings:    []*Finding{},
+		Runs:        []*Run{},
+		Approvals:   []*Approval{},
+		Activity:    []Activity{},
+		Chat:        []*ChatMessage{},
+		Scenarios:   SeedScenarios(),
+		Usage:       map[string]*Usage{},
+		Reasoner:    reasoner,
+		Model:       model,
 	}
 	for _, a := range s.Agents {
 		s.Usage[a.ID] = &Usage{}

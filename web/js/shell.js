@@ -4,7 +4,7 @@ import { store, sel } from './store.js';
 import { route, go } from './router.js';
 import { api } from './api.js';
 
-export const NAV = [['findings', 'Findings'], ['investigations', 'Investigations'], ['approvals', 'Approvals'], ['chat', 'Ask Beacon'], ['agents', 'Agents'], ['services', 'Services'], ['connections', 'Connections'], ['responders', 'Responders'], ['consumption', 'Consumption']];
+export const NAV = [['findings', 'Findings'], ['investigations', 'Investigations'], ['approvals', 'Approvals'], ['chat', 'Ask Beacon'], ['agents', 'Agents'], ['services', 'Apps'], ['connections', 'Connections'], ['responders', 'Responders'], ['consumption', 'Consumption']];
 
 export function shell(contentNode, opts = {}) {
   const s = store.state; const r = route().split('/')[0];
@@ -25,7 +25,7 @@ export function setupShell(contentNode) {
 }
 function probeSummary() {
   const s = store.state; const on = s.probe.hosts.length;
-  const conns = Object.values(s.connections).filter((c) => c.status === 'connected').length;
+  const conns = s.connections.filter((c) => c.status === 'connected').length;
   return on ? `${on} probes online · ${conns} connections` : (conns ? `${conns} connections · no probes yet` : 'Not connected');
 }
 export function activityPanel() {

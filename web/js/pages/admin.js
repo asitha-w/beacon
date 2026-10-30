@@ -3,7 +3,7 @@ import { store, sel } from '../store.js';
 import { api } from '../api.js';
 import { go } from '../router.js';
 import { ago, money, tokens, duration, toast } from '../shell.js';
-import { connChip, probeChip } from './setup.js';
+import { azureForm, upcloudForm, connectionCard, probeChip } from '../connections.js';
 
 export function pageApprovals() {
   const rows = sel.pendingApprovals().map((a) => el('tr', { class: 'row', onClick: () => go('inv/' + a.runId) }, [el('td', { class: 'mono', text: a.id }), el('td', { text: a.task }), el('td', null, [StatusChip({ status: 'awaiting-approval' })]), el('td', { class: 'mono', text: a.level }), el('td', { class: 'mono muted', text: ago(a.requestedAt) })]));
@@ -14,22 +14,78 @@ export function pageApprovals() {
 }
 
 const mappingRules = [['prometheus', 'instance="web-01:9100"', 'web-01', 'label host'], ['datadog', 'host:edge-01.example', 'edge-01', 'tag host, strip domain'], ['loki', '{job="nginx", host="web-01"}', 'web-01', 'label host'], ['azure monitor', 'resourceId … /web-01', 'web-01', 'native']];
-function svc(sv, n) { return el('div', { class: 'card' }, [el('div', { class: 'bc-row', style: 'justify-content:space-between' }, [el('span', { class: 'heading', text: sv.name }), SeverityChip({ severity: sv.criticality === 'Critical' ? 'critical' : 'info', label: sv.criticality })]), el('dl', { class: 'kv', style: 'margin-top:8px' }, [el('dt', { text: 'Owner' }), el('dd', { class: 'mono', text: sv.owner }), el('dt', { text: 'Resources' }), el('dd', { text: String(n) }), el('dt', { text: 'SLO' }), el('dd', { text: sv.slo })])]); }
+
+function parseSelector(text) {
+  const out = {};
+  text.split(',').map((p) => p.trim()).filter(Boolean).forEach((p) => { const i = p.indexOf('='); if (i > 0) out[p.slice(0, i).trim()] = p.slice(i + 1).trim(); });
+  return out;
+}
+function selectorText(sel) { return Object.keys(sel || {}).map((k) => k + '=' + sel[k]).join(', '); }
+function labelChips(labels) { return el('div', { class: 'policy', style: 'flex-wrap:wrap' }, Object.keys(labels || {}).map((k) => el('span', { text: k + '=' + labels[k] }))); }
+
+// appCard shows an app, its selector, matched resources, and an inline editor.
+function appCard(a) {
+  const matched = sel.resourcesOf(a);
+  const sv = el('input', { id: 'app-sel-' + a.id, value: selectorText(a.selector) });
+  const editor = el('div', { class: 'form hidden', style: 'margin-top:8px' }, [
+    el('div', { class: 'field' }, [el('label', { text: 'Selector (key=value, comma separated)' }), sv]),
+    el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Save', onClick: () => api.saveApp(Object.assign({}, a, { selector: parseSelector(sv.value) })).catch((e) => toast(e.message)) }), Button({ variant: 'danger', label: 'Delete app', onClick: () => api.deleteApp(a.id).catch((e) => toast(e.message)) })]),
+  ]);
+  return el('div', { class: 'card' }, [
+    el('div', { class: 'bc-row', style: 'justify-content:space-between' }, [el('span', { class: 'heading', text: a.name }), SeverityChip({ severity: a.criticality === 'Critical' ? 'critical' : 'info', label: a.criticality })]),
+    el('div', { style: 'margin-top:6px' }, [labelChips(a.selector)]),
+    el('dl', { class: 'kv', style: 'margin-top:8px' }, [el('dt', { text: 'Owner' }), el('dd', { class: 'mono', text: a.owner }), el('dt', { text: 'Resources' }), el('dd', { text: matched.length ? matched.map((r) => r.id).join(', ') : 'none match' }), el('dt', { text: 'SLO' }), el('dd', { text: a.slo || 'none yet' })]),
+    el('div', { class: 'bc-row', style: 'margin-top:8px' }, [Button({ label: 'Edit selector', onClick: () => editor.classList.toggle('hidden') })]),
+    editor,
+  ]);
+}
+
+function newAppForm() {
+  const name = el('input', { id: 'new-app-name', placeholder: 'Checkout' });
+  const selInput = el('input', { id: 'new-app-sel', placeholder: 'app=shop, tier=api' });
+  const crit = el('select', { id: 'new-app-crit' }, [el('option', { text: 'Standard' }), el('option', { text: 'Critical' })]);
+  const owner = el('input', { id: 'new-app-owner', placeholder: 'team@shop.example' });
+  const box = el('div', { class: 'card hidden' }, [el('div', { class: 'heading', text: 'New app' }), el('div', { class: 'form', style: 'margin-top:8px' }, [
+    el('div', { class: 'field' }, [el('label', { for: 'new-app-name', text: 'Name' }), name]),
+    el('div', { class: 'field' }, [el('label', { for: 'new-app-sel', text: 'Selector (key=value, comma separated)' }), selInput, el('span', { class: 'sm muted', text: 'Resources whose labels match every pair belong to this app. New resources join automatically.' })]),
+    el('div', { class: 'field' }, [el('label', { for: 'new-app-crit', text: 'Criticality' }), crit]),
+    el('div', { class: 'field' }, [el('label', { for: 'new-app-owner', text: 'Owner' }), owner]),
+    el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Create app', onClick: () => api.saveApp({ name: name.value, selector: parseSelector(selInput.value), criticality: crit.value, owner: owner.value, slo: 'none yet' }).then(() => box.classList.add('hidden')).catch((e) => toast(e.message)) }), Button({ label: 'Cancel', onClick: () => box.classList.add('hidden') })]),
+  ])]);
+  return { box, toggle: () => box.classList.toggle('hidden') };
+}
+
+// resourceRow shows labels with an inline editor.
+function resourceRow(r) {
+  const s = store.state; const app = sel.appOf(r); const conn = s.connections.find((c) => c.id === r.connectionId);
+  const input = el('input', { id: 'labels-' + r.id, value: selectorText(r.labels), style: 'width:100%' });
+  const editor = el('div', { class: 'bc-row hidden', style: 'margin-top:6px' }, [input, Button({ variant: 'primary', label: 'Save', onClick: () => api.setLabels(r.id, parseSelector(input.value)).catch((e) => toast(e.message)) })]);
+  const cell = el('div', null, [labelChips(r.labels), editor]);
+  cell.firstChild.style.cursor = 'pointer'; cell.firstChild.title = 'Edit labels'; cell.firstChild.addEventListener('click', () => editor.classList.toggle('hidden'));
+  return el('tr', null, [el('td', { class: 'mono', text: r.id }), el('td', null, [el('div', { text: r.kind }), el('div', { class: 'sm muted', text: r.detail + (r.resourceGroup ? ' · ' + r.resourceGroup : '') })]), el('td', null, [cell]), el('td', { text: app ? app.name : 'Unassigned', class: app ? '' : 'muted' }), el('td', { class: 'sm muted', text: conn ? conn.name : 'not in any connection scope' }), el('td', null, [r.probe ? el('span', { class: 'bc-pill ' + (s.probe.hosts.includes(r.id) ? 'bc-pill-available' : 'bc-pill-missing'), text: s.probe.hosts.includes(r.id) ? 'probe online' : 'probe expected' }) : el('span', { class: 'bc-pill bc-pill-none', text: 'agentless' })])]);
+}
+
 export function pageServices() {
-  const s = store.state;
-  const rows = s.resources.map((r) => el('tr', null, [el('td', { class: 'mono', text: r.id }), el('td', { text: r.kind }), el('td', { class: 'sm muted', text: r.detail }), el('td', { text: r.service }), el('td', null, [r.probe ? el('span', { class: 'bc-pill ' + (s.probe.hosts.includes(r.id) ? 'bc-pill-available' : 'bc-pill-missing'), text: s.probe.hosts.includes(r.id) ? 'probe online' : 'probe expected' }) : el('span', { class: 'bc-pill bc-pill-none', text: 'agentless' })])]));
+  const s = store.state; const form = newAppForm();
   const map = mappingRules.map((m) => el('tr', null, [el('td', { text: m[0] }), el('td', { class: 'mono', text: m[1] }), el('td', { class: 'mono', text: m[2] }), el('td', { class: 'sm muted', text: m[3] })]));
-  return el('div', { class: 'page' }, [el('h1', { class: 'display', text: 'Services and inventory' }), el('p', { class: 'muted', text: 'Group discovered resources into services and set who owns them. Criticality decides who gets paged and which responders may act.' }),
-    el('div', { class: 'split' }, s.services.map((sv) => svc(sv, s.resources.filter((r) => r.service === sv.name).length))),
-    el('div', null, [el('h2', { class: 'title', text: 'Resources' }), el('div', { style: 'height:8px' }), el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Resource' }), el('th', { text: 'Kind' }), el('th', { text: 'Detail' }), el('th', { text: 'Service' }), el('th', { text: 'Telemetry' })])]), el('tbody', null, rows)])])]),
+  return el('div', { class: 'page' }, [el('div', { class: 'bc-row', style: 'justify-content:space-between' }, [el('h1', { class: 'display', text: 'Apps and inventory' }), Button({ variant: 'primary', label: 'New app', onClick: form.toggle })]),
+    el('p', { class: 'muted', text: 'Labels come from provider tags and can be edited here. An app is a label selector: resources join it by matching, runbooks attach to the same labels, and criticality decides who is paged and which responders may act.' }),
+    form.box,
+    el('div', { class: 'split' }, s.apps.map(appCard)),
+    el('div', null, [el('h2', { class: 'title', text: 'Resources' }), el('div', { style: 'height:8px' }), el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Resource' }), el('th', { text: 'Kind' }), el('th', { text: 'Labels' }), el('th', { text: 'App' }), el('th', { text: 'Connection' }), el('th', { text: 'Telemetry' })])]), el('tbody', null, s.resources.map(resourceRow))])])]),
     el('div', null, [el('h2', { class: 'title', text: 'Mapping rules' }), el('p', { class: 'sm muted', text: 'How a label or tag in a telemetry source resolves to a resource here. Without a rule, a finding cannot say which machine it is about.' }), el('div', { style: 'height:8px' }), el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Source' }), el('th', { text: 'Label or tag' }), el('th', { text: 'Resource' }), el('th', { text: 'Rule' })])]), el('tbody', null, map)])])])]);
 }
 
 export function pageConnections() {
-  const s = store.state; const az = s.connections.azure, uc = s.connections.upcloud, pr = s.probe;
-  const card = (name, c) => el('div', { class: 'card conn' }, [el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: name }), connChip(c.status)]), c.status === 'connected' ? el('dl', { class: 'kv' }, [el('dt', { text: 'Scope' }), el('dd', { text: c.scope }), el('dt', { text: 'Identity' }), el('dd', { text: c.identity }), el('dt', { text: 'Last validated' }), el('dd', { class: 'mono', text: new Date(c.validatedAt).toLocaleTimeString() }), el('dt', { text: 'Egress' }), el('dd', { class: 'mono', text: s.tenant.egressIp + ' (static)' })]) : el('p', { class: 'muted', text: 'Not connected.' }), c.status === 'connected' ? CapabilityList({ items: c.capabilities }) : null]);
+  const s = store.state; const pr = s.probe;
+  const azBox = el('div', { class: 'card conn hidden' }, [el('div', { class: 'heading', text: 'New Azure connection' }), azureForm({ onSubmit: () => azBox.classList.add('hidden'), onCancel: () => azBox.classList.add('hidden') })]);
+  const ucBox = el('div', { class: 'card conn hidden' }, [el('div', { class: 'heading', text: 'New UpCloud connection' }), upcloudForm({ onSubmit: () => ucBox.classList.add('hidden'), onCancel: () => ucBox.classList.add('hidden') })]);
   const probes = el('div', { class: 'card conn' }, [el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: 'Probes' }), probeChip(pr.status)]), CapabilityList({ items: pr.expected.map((h) => ({ name: h, detail: pr.hosts.includes(h) ? 'OpAMP · heartbeat 12s ago · config v3' : 'no heartbeat', state: pr.hosts.includes(h) ? 'available' : 'none' })) })]);
-  return el('div', { class: 'page' }, [el('h1', { class: 'display', text: 'Connections' }), el('p', { class: 'muted', text: 'What each connection lets Beacon see and do. Missing permission means the provider offers it and the identity lacks it. Not offered means the provider has no such signal.' }), el('div', { class: 'split' }, [card('Microsoft Azure', az), card('UpCloud', uc)]), probes, el('div', { class: 'bc-row' }, [Button({ label: 'Add connection', onClick: () => go('setup-connect') }), Button({ label: 'Add telemetry source (Prometheus, Datadog, Loki)', onClick: () => toast('Telemetry sources are a later screen.') })])]);
+  return el('div', { class: 'page' }, [el('h1', { class: 'display', text: 'Connections' }), el('p', { class: 'muted', text: 'Each connection is one identity at one scope. A tenant can hold several per provider: broad read for discovery, narrow write for fixes. Missing permission means the provider offers it and the identity lacks it. Not offered means the provider has no such signal.' }),
+    el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Add Azure connection', onClick: () => { azBox.classList.toggle('hidden'); ucBox.classList.add('hidden'); } }), Button({ variant: 'primary', label: 'Add UpCloud connection', onClick: () => { ucBox.classList.toggle('hidden'); azBox.classList.add('hidden'); } }), Button({ label: 'Add telemetry source (Prometheus, Datadog, Loki)', onClick: () => toast('Telemetry sources are a later screen.') })]),
+    azBox, ucBox,
+    s.connections.length ? el('div', { class: 'split' }, s.connections.map((c) => connectionCard(c, { removable: true }))) : el('div', { class: 'empty', text: 'No connections yet.' }),
+    probes]);
 }
 
 export function pageResponders() {

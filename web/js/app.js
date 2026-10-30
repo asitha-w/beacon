@@ -19,7 +19,7 @@ const PAGES = {
   approvals: { page: pageApprovals, crumb: 'Approvals', aside: true },
   chat: { page: pageChat, crumb: 'Ask Beacon', aside: true },
   agents: { page: pageAgents, crumb: 'Agents' },
-  services: { page: pageServices, crumb: 'Services' },
+  services: { page: pageServices, crumb: 'Apps' },
   connections: { page: pageConnections, crumb: 'Connections' },
   responders: { page: pageResponders, crumb: 'Responders' },
   consumption: { page: pageConsumption, crumb: 'Consumption' },
