@@ -99,12 +99,12 @@ class Demo:
 
 
 def part1(d: Demo):
-    d.title("Onboarding", "Part 1 of 4 · sign in, tenant, connections, agents")
+    d.title("Onboarding", "Part 1 of 4 · sign in, tenant, connections, cells, agents")
     d.go("login")
     d.type(d.page.get_by_placeholder("you@company.example"), "asitha@shop.example")
     d.type(d.page.get_by_placeholder("Password"), "demo-password", delay=30)
     d.click(d.button("Sign in"), pause=2)
-    d.hover_read(d.page.get_by_text("A cell is your own isolated worker set"), 2)
+    d.hover_read(d.page.get_by_text("The tenant gets its own runtime"), 2)
     d.click(d.button("Create tenant"), pause=2.5)
     # UpCloud first: sub-account, token, grants
     d.hover_read(d.page.get_by_text("Create a sub-account in the UpCloud hub"), 2)
@@ -112,15 +112,23 @@ def part1(d: Demo):
     # Azure: directory, identity, read scope, write scope
     d.hover_read(d.page.get_by_text("Consent creates a service principal"), 2.2)
     d.scroll(380, 1.5)
-    d.hover_read(d.page.get_by_text("Reader, Monitoring Reader and AKS RBAC Reader"), 2.2)
-    d.hover_read(d.page.get_by_text("This is the blast radius for fixes"), 2.2)
+    d.hover_read(d.page.get_by_text("Reader roles are assigned here"), 2.2)
+    d.hover_read(d.page.get_by_text("Contributor roles are assigned here"), 2.2)
     d.click(d.button("Consent and validate"), pause=3.5)
     d.scroll(-900, 1.5)
-    d.hover_read(d.page.get_by_text("Resources in scope").first, 2.5)
-    d.scroll(500, 2.5)
-    d.scroll(600, 2)
-    d.click(d.button("I ran it, wait for probes"), pause=2)
-    d.pause(7)
+    # discovery: what each connection found, what is manageable, then onboard
+    d.hover_read(d.page.get_by_text("Discovered in scope").first, 2.5)
+    d.hover_read(d.page.get_by_text("not supported yet").first, 2.2)
+    d.click(d.button("Onboard selected as cells").first, pause=2.5)
+    d.click(d.button("Onboard selected as cells").first, pause=2.5)
+    d.scroll(900, 2)
+    d.hover_read(d.page.get_by_text("Every cell starts at the basic tier"), 2.5)
+    d.click(d.page.get_by_role("button", name="I ran it on"), pause=2)
+    d.pause(8)
+    d.go("cells", 2.5)
+    d.hover_read(d.page.get_by_text("one isolated channel per cell"), 3)
+    d.hover_read(d.page.get_by_text("identity shared with").first, 2.5)
+    d.hover_read(d.page.get_by_text("dedicated identity").first, 2.5)
     d.go("agents", 2.5)
     d.hover_read(d.page.get_by_text("Orchestrator", exact=True).first, 2)
     d.hover_read(d.page.get_by_text("Investigator", exact=True).first, 2)
@@ -155,7 +163,7 @@ def part2(d: Demo):
     d.pause(1)
     d.click(d.button("Create runbook"), pause=2)
     d.scroll(900, 2)
-    d.hover_read(d.page.get_by_text("Applies to db-01"), 2.5)
+    d.hover_read(d.page.get_by_text("No cell matches this selector yet"), 2.5)
 
 
 def part3(d: Demo):
@@ -213,7 +221,7 @@ def main():
         f.unlink()
     server = subprocess.Popen(
         ["go", "run", "./cmd/beacon"], cwd=ROOT,
-        env={**os.environ, "BEACON_ADDR": f":{PORT}", "BEACON_PACE_MS": "900"},
+        env={**os.environ, "BEACON_ADDR": f":{PORT}", "BEACON_PACE_MS": "900", "BEACON_WEB_DIR": ""},
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, preexec_fn=os.setsid,
     )
     try:
