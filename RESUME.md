@@ -1,18 +1,32 @@
 # Resume notes
 
-Working folder and git repo for Beacon. Started 2026-10-29; the Go app landed 2026-10-30 on branch `app/v1`.
+Working folder and git repo for Beacon. Private GitHub repo: https://github.com/asitha-w/beacon (default branch `main`, work on `app/v1`). Started 2026-10-29; the Go app landed 2026-10-30 and was reshaped around cells the same day.
 
-- `README.md` explains the app, how to run it and how a run flows. Start there.
-- `beacon-initial-prd.md` is the PRD v0.1 the work began from.
-- `ARTIFACTS.md` lists every published artifact with its URL, local source and how to republish.
-- `design-system/project/` is the Beacon design system exactly as published. `web/js/ds.js` and `web/css/beacon.css` mirror it.
-- `prototype/beacon-console.html` is the frozen static prototype that matches the published artifact. The live app in `cmd/`, `internal/`, `web/` supersedes it.
-- `traffic-map/beacon-traffic-map.html` is the connections diagram exactly as published.
+## Where to start
 
-Decisions so far: dark-first console; product name Beacon on screens; polls are truth and webhooks are hints; no Beacon-written agent, the probe is an unmodified OpenTelemetry Collector managed over OpAMP; per-tenant cell with static egress; Postgres for the system of record, ClickHouse for parked telemetry, Temporal for durable runs, OPA for policy, NATS JetStream for events, Go throughout; PoC runs in docker compose, UpCloud Starter 4 vCPU 16 GB host plus a 1 GB UpCloud server as the first monitored asset.
+- `./start.sh` runs everything on http://localhost:8080; `./start.sh --dev` serves the console from `web/` so edits show on refresh. `README.md` explains the model and the run flow.
+- `docs/architecture/beacon-architecture.png` is the one-page picture for the team. `docs/recordings/2026-10-30-beacon-walkthrough.mp4` is the 5-minute video; `tools/record/record.py` regenerates it.
+- `ARTIFACTS.md` lists the published claude.ai artifacts from day one. The design system there still shows the old IBM Plex look; `web/css/beacon.css` is now the source of truth.
 
-Cell model (2026-10-30, later in the day): tenant = cells + one runtime; connection = identity at scope that discovers a catalogue; cell = one managed VM, cluster or server with its own channel, basic or agent tier; apps and runbooks select cells by label; one agent team per tenant. `./start.sh` runs everything; `./start.sh --dev` serves the console from disk.
+## The model, as agreed on 2026-10-30
 
-Agent model (2026-10-30): one orchestrator per tenant that the human talks to; it applies the responder table to signals and starts specialists (investigator). Deterministic workers (remediator, verifier) have no model. Usage is tracked per agent and per run. Scripted mode replays playbooks through the same toolbox when no API key is set.
+- Tenant = a collection of cells served by one runtime (isolated workers, own credentials, static egress).
+- Connection = an identity at a scope. Azure: directory, consent or own app registration, read scope, narrower write scope; validation lists roles and fills a catalogue. UpCloud: sub-account token, its grants are the frame. Connections manage nothing by themselves.
+- Cell = one managed VM, cluster or server, onboarded from a catalogue, with its own isolated channel, labels, and a tier: basic (provider sensors and actions) or probe (the OpenTelemetry Collector installed; telemetry settings render into its config over OpAMP). The investigator can only read what the telemetry enables.
+- Isolation is real at Beacon's layer (channel, policy, budget per cell) and at the provider's layer only as far as the identity's scope; the Cells page shows dedicated versus shared identity.
+- Labels are the only glue: runbooks select cells by label, owner and criticality are labels, `app=` is just a label. There is no app object.
+- One agent team per tenant: orchestrator (talks to the operator, routes by the responder table), investigator (model), remediator and verifier (no model). "Agent" means these; the thing on a cell is the "probe".
+- Runbooks guide, the responder policy decides (allow, ask, deny).
 
-Next: tenant-specific runbooks the agents follow (attach to responder or service, inject into the investigator prompt); live-mode test with an API key; push to GitHub when happy.
+## Earlier decisions still standing
+
+Dark-first console in the shadcn look; polls are truth and webhooks are hints; probe is an unmodified OpenTelemetry Collector over OpAMP; Postgres, ClickHouse, Temporal, OPA, NATS JetStream, Go; PoC on an UpCloud host in docker compose.
+
+## Open items, in the order we discussed
+
+1. Live-mode run with an API key: the investigator and orchestrator prompts have never been exercised against the model.
+2. Cell page follow-ups: receivers per kind, a "test this log source" action, telemetry presets.
+3. Responders and runbooks per cell page (which responders are in scope for this cell).
+4. Consumption: budgets per tenant, maybe per cell.
+5. Re-publish the design system artifact from the current stylesheet when the screens settle.
+6. Decide whether `main` tracks `app/v1` continuously or only at milestones.
