@@ -46,9 +46,20 @@ func (s *Scripted) Investigate(ctx context.Context, run *domain.Run, tb *Toolbox
 	} else {
 		playbook = healthCheck(run)
 	}
-	for _, step := range playbook {
+	var rbNames []string
+	s.st.View(func(st *domain.State) {
+		for _, id := range run.Runbooks {
+			if rb := st.Runbook(id); rb != nil {
+				rbNames = append(rbNames, rb.Name)
+			}
+		}
+	})
+	for i, step := range playbook {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if i == 0 && step.Say != "" && len(rbNames) > 0 {
+			step.Say = "Following runbook " + strings.Join(rbNames, " and ") + ". " + step.Say
 		}
 		if step.Say != "" {
 			s.stream(ctx, tb, step.Say)

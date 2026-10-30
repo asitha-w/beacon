@@ -1,4 +1,5 @@
 import { el, Button } from '../ds.js';
+import { icon } from '../icons.js';
 import { store, sel } from '../store.js';
 import { azureForm, upcloudForm, connectionCard, connChip, probeChip } from '../connections.js';
 import { api } from '../api.js';
@@ -15,7 +16,7 @@ export function pageLogin() {
     Button({ variant: 'primary', label: 'Sign in', type: 'submit' }),
   ]);
   return el('div', { class: 'center' }, [el('div', { class: 'login' }, [
-    el('div', { class: 'brand' }, [el('i'), 'Beacon']),
+    el('div', { class: 'brand' }, [el('i', null, [icon('beacon')]), 'Beacon']),
     el('p', { class: 'muted', text: 'Reliability operations for teams without a full-time SRE. Sign in to your workspace.' }),
     form, el('div', { class: 'hr' }),
     Button({ label: 'Continue with Microsoft Entra', onClick: () => signIn('asitha') }),

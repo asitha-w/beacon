@@ -3,7 +3,10 @@
 // the same types can back the real product later.
 package domain
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 // User is the signed-in operator.
 type User struct {
@@ -151,17 +154,34 @@ type App struct {
 }
 
 // Matches reports whether every selector pair is present on the resource.
-func (a *App) Matches(r *Resource) bool {
-	if len(a.Selector) == 0 {
+func (a *App) Matches(r *Resource) bool { return selectorMatches(a.Selector, r) }
+
+func selectorMatches(sel map[string]string, r *Resource) bool {
+	if len(sel) == 0 {
 		return false
 	}
-	for k, v := range a.Selector {
+	for k, v := range sel {
 		if r.Labels[k] != v {
 			return false
 		}
 	}
 	return true
 }
+
+// Runbook is tenant-written guidance attached to a label selector. Agents
+// read the runbooks that match the resource they work on and cite them. A
+// runbook guides; the responder policy still decides what may run.
+type Runbook struct {
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	Selector  map[string]string `json:"selector"`
+	Body      string            `json:"body"`
+	UpdatedAt time.Time         `json:"updatedAt"`
+	UpdatedBy string            `json:"updatedBy,omitempty"`
+}
+
+// Matches reports whether the runbook applies to the resource.
+func (rb *Runbook) Matches(r *Resource) bool { return selectorMatches(rb.Selector, r) }
 
 // Tool policies.
 const (
@@ -342,6 +362,7 @@ type Run struct {
 	Hypotheses    []Hypothesis `json:"hypotheses"`
 	Chain         []ChainStep  `json:"chain"`
 	ApprovalID    string       `json:"approvalId,omitempty"`
+	Runbooks      []string     `json:"runbooks"`
 	Questions     []QA         `json:"questions"`
 	Summary       string       `json:"summary,omitempty"`
 	CauseVerified bool         `json:"causeVerified"`
@@ -406,6 +427,7 @@ type State struct {
 	Probe       Probe             `json:"probe"`
 	Resources   []Resource        `json:"resources"`
 	Apps        []*App            `json:"apps"`
+	Runbooks    []*Runbook        `json:"runbooks"`
 	Responders  []*Responder      `json:"responders"`
 	Agents      []*AgentDef       `json:"agents"`
 	Findings    []*Finding        `json:"findings"`
@@ -556,6 +578,32 @@ func (s *State) WriteConnection(r *Resource) *Connection {
 	for _, c := range s.Connections {
 		if c.CanWrite(r) {
 			return c
+		}
+	}
+	return nil
+}
+
+// RunbooksFor returns the runbooks matching a resource, most specific first.
+func (s *State) RunbooksFor(resourceID string) []*Runbook {
+	r := s.Resource(resourceID)
+	if r == nil {
+		return nil
+	}
+	var out []*Runbook
+	for _, rb := range s.Runbooks {
+		if rb.Matches(r) {
+			out = append(out, rb)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return len(out[i].Selector) > len(out[j].Selector) })
+	return out
+}
+
+// Runbook returns the runbook with the id, or nil.
+func (s *State) Runbook(id string) *Runbook {
+	for _, rb := range s.Runbooks {
+		if rb.ID == id {
+			return rb
 		}
 	}
 	return nil

@@ -53,8 +53,9 @@ func toolParams(defs []ToolDef) []anthropic.ToolUnionParam {
 
 // Investigate implements Reasoner.
 func (c *Claude) Investigate(ctx context.Context, run *domain.Run, tb *Toolbox) error {
-	var responder, finding string
+	var responder, finding, runbooks string
 	c.st.View(func(s *domain.State) {
+		runbooks = runbookText(s, run)
 		if r := s.Responder(run.ResponderID); r != nil {
 			var pol []string
 			for _, tp := range r.Tools {
@@ -67,6 +68,9 @@ func (c *Claude) Investigate(ctx context.Context, run *domain.Run, tb *Toolbox) 
 		}
 	})
 	task := fmt.Sprintf("%s\n%s\nTask: %s\nInvestigate, record evidence and hypotheses, propose one action, then conclude.", finding, responder, run.Task)
+	if runbooks != "" {
+		task += "\n\nThe tenant wrote these runbooks for this resource. Follow their fix order and their Never rules, and say which runbook step you are following when you propose an action.\n" + runbooks
+	}
 	_, err := c.loop(ctx, loopRequest{
 		system:  investigatorSystem,
 		effort:  effortOf(c.st, run.Agent),

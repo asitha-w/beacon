@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // Seed data for a fresh tenant. In the real product these come from discovery
 // and the tenant's own configuration; here they describe the simulated estate.
 
@@ -65,6 +67,59 @@ func SeedAgents(model string) []*AgentDef {
 		{ID: "cost-advisor", Name: "Cost advisor", Kind: AgentSpecialist, Role: "Finds idle and oversized resources",
 			Description: "Weekly review of utilisation against size. Disabled until the tenant opts in; shown here so the roster is complete.",
 			Model:       model, Effort: "low", Tools: []string{"read_metrics", "get_resource_state", "notify"}, Enabled: false, MaxToolCalls: 15},
+	}
+}
+
+// SeedRunbooks is the tenant's starting guidance, one per app tier.
+func SeedRunbooks() []*Runbook {
+	t := time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC)
+	return []*Runbook{
+		{ID: "shop-web-vms", Name: "Shop web on VMs", Selector: map[string]string{"app": "shop", "tier": "web"}, UpdatedAt: t, UpdatedBy: "platform@shop.example", Body: `# Shop web on VMs
+
+nginx in front of the shop-web process on Ubuntu 22.04. Deploys come from ci-deploy through Run Command.
+
+## Health signals
+- disk_used_percent on / above 85% is the early warning; 90% is the signal.
+- requests_per_second around 300 is normal at this hour; a spike is above 600.
+
+## Known fixes, in order
+1. Disk pressure: force a logrotate run first. If NGINX_DEBUG=1 is set in /etc/nginx/env, turn it off and reload nginx. Debug logging is never meant to stay on in production.
+2. High memory: restart shop-web, not nginx.
+
+## Never
+- Never delete files under /var/log. Rotate and compress only.
+- Never reboot during the 08:00 to 10:00 CET order window.
+
+## Escalation
+platform@shop.example, #ops on Slack. Page only for Critical findings.
+`},
+		{ID: "shop-api-aks", Name: "Shop API on AKS", Selector: map[string]string{"app": "shop", "tier": "api"}, UpdatedAt: t, UpdatedBy: "platform@shop.example", Body: `# Shop API on AKS
+
+Deployment shop-api, three replicas, rolled out by ci-deploy. Checkout depends on it.
+
+## Known fixes, in order
+1. Error rate rises right after a rollout: roll back to the previous revision. Do not wait for a hotfix.
+2. Pod restarts without a rollout: check node memory before touching the deployment.
+
+## Never
+- Never delete pods by hand; let the deployment replace them.
+- Never scale below three replicas.
+
+## Escalation
+platform@shop.example. Attach the pod log excerpt and the rollout revision.
+`},
+		{ID: "edge-proxy", Name: "Edge proxy servers", Selector: map[string]string{"app": "edge"}, UpdatedAt: t, UpdatedBy: "ops@shop.example", Body: `# Edge proxy servers
+
+Small UpCloud servers running nginx as a caching proxy. 1 GB of memory; the cache zone is sized at 400 MB.
+
+## Known fixes, in order
+1. nginx down, host up: restart nginx. Safe at any hour.
+2. Server stopped with no operator event: start it. This is allowlisted (L4).
+3. Repeated OOM kills: lower edge_cache in /etc/nginx/conf.d/cache.conf and tell ops.
+
+## Escalation
+ops@shop.example. Edge is Standard criticality; no paging.
+`},
 	}
 }
 
@@ -163,6 +218,7 @@ func NewState(model, reasoner string) *State {
 		Probe:       Probe{Status: ProbeNone, Hosts: []string{}, Expected: []string{"edge-01", "web-01", "aks-shop"}},
 		Resources:   SeedResources(),
 		Apps:        SeedApps(),
+		Runbooks:    SeedRunbooks(),
 		Responders:  SeedResponders(),
 		Agents:      SeedAgents(model),
 		Findings:    []*Finding{},

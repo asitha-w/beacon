@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -63,10 +64,10 @@ func (o *Orchestrator) HandleSignal(sig Signal) string {
 		fid := o.st.NextID("F", 0x8d)
 		runID = o.st.NextID("inv", 0xa6)
 		f := &domain.Finding{ID: fid, Title: sig.Title, Service: s.AppName(sig.Resource), Resource: sig.Resource, Severity: sig.Severity, Status: domain.FindingInvestigating, RunID: runID, ResponderID: r.ID, CreatedAt: time.Now()}
-		run := &domain.Run{ID: runID, Agent: r.Agent, Trigger: "signal", Task: sig.Title, FindingID: fid, ResponderID: r.ID, Status: domain.RunRunning, Outcome: "Running", StartedAt: time.Now(), Messages: []*domain.Message{}, Evidence: []domain.Evidence{}, Hypotheses: []domain.Hypothesis{}, Chain: []domain.ChainStep{}, Questions: []domain.QA{}}
+		run := &domain.Run{ID: runID, Agent: r.Agent, Trigger: "signal", Task: sig.Title, FindingID: fid, ResponderID: r.ID, Status: domain.RunRunning, Outcome: "Running", StartedAt: time.Now(), Messages: []*domain.Message{}, Evidence: []domain.Evidence{}, Hypotheses: []domain.Hypothesis{}, Chain: []domain.ChainStep{}, Questions: []domain.QA{}, Runbooks: []string{}}
 		run.Messages = append(run.Messages,
 			&domain.Message{ID: o.st.NextID("m", 0), Role: domain.RoleSignal, Title: "Signal loop", Text: sig.Text + fmt.Sprintf(" Responder %s matched.", r.ID), At: time.Now()},
-			&domain.Message{ID: o.st.NextID("m", 0), Role: domain.RoleOrchestrator, Agent: "orchestrator", Title: "Orchestrator", Text: fmt.Sprintf("Starting %s for %s under responder %s (%s, %s) with a budget of %d tool calls.", agent.Name, sig.Resource, r.ID, r.Mode, r.Level, agent.MaxToolCalls), At: time.Now()})
+			&domain.Message{ID: o.st.NextID("m", 0), Role: domain.RoleOrchestrator, Agent: "orchestrator", Title: "Orchestrator", Text: fmt.Sprintf("Starting %s for %s under responder %s (%s, %s) with a budget of %d tool calls.%s", agent.Name, sig.Resource, r.ID, r.Mode, r.Level, agent.MaxToolCalls, attachRunbooks(s, run, sig.Resource)), At: time.Now()})
 		s.Findings = append([]*domain.Finding{f}, s.Findings...)
 		s.Runs = append([]*domain.Run{run}, s.Runs...)
 		s.Usage["orchestrator"].Runs++
@@ -109,8 +110,8 @@ func (o *Orchestrator) StartInvestigation(resource, task, by string) (string, er
 		fid := o.st.NextID("F", 0x8d)
 		runID = o.st.NextID("inv", 0xa6)
 		f := &domain.Finding{ID: fid, Title: task, Service: s.AppName(resource), Resource: resource, Severity: "info", Status: domain.FindingInvestigating, RunID: runID, ResponderID: operatorResponder.ID, CreatedAt: time.Now()}
-		run := &domain.Run{ID: runID, Agent: "investigator", Trigger: "user", Task: task, FindingID: fid, ResponderID: operatorResponder.ID, Status: domain.RunRunning, Outcome: "Running", StartedAt: time.Now(), Messages: []*domain.Message{}, Evidence: []domain.Evidence{}, Hypotheses: []domain.Hypothesis{}, Chain: []domain.ChainStep{}, Questions: []domain.QA{}}
-		run.Messages = append(run.Messages, &domain.Message{ID: o.st.NextID("m", 0), Role: domain.RoleOrchestrator, Agent: "orchestrator", Title: "Orchestrator", Text: fmt.Sprintf("%s asked: %q. Starting the investigator on %s under the operator-request policy (reads allowed, changes need approval).", by, task, resource), At: time.Now()})
+		run := &domain.Run{ID: runID, Agent: "investigator", Trigger: "user", Task: task, FindingID: fid, ResponderID: operatorResponder.ID, Status: domain.RunRunning, Outcome: "Running", StartedAt: time.Now(), Messages: []*domain.Message{}, Evidence: []domain.Evidence{}, Hypotheses: []domain.Hypothesis{}, Chain: []domain.ChainStep{}, Questions: []domain.QA{}, Runbooks: []string{}}
+		run.Messages = append(run.Messages, &domain.Message{ID: o.st.NextID("m", 0), Role: domain.RoleOrchestrator, Agent: "orchestrator", Title: "Orchestrator", Text: fmt.Sprintf("%s asked: %q. Starting the investigator on %s under the operator-request policy (reads allowed, changes need approval).%s", by, task, resource, attachRunbooks(s, run, resource)), At: time.Now()})
 		s.Findings = append([]*domain.Finding{f}, s.Findings...)
 		s.Runs = append([]*domain.Run{run}, s.Runs...)
 		s.Usage["investigator"].Runs++
@@ -534,4 +535,47 @@ func endScenario(s *domain.State, f *domain.Finding) []store.Event {
 		}
 	}
 	return evs
+}
+
+// attachRunbooks records the runbooks that match the resource on the run and
+// returns a sentence for the orchestrator's message.
+func attachRunbooks(s *domain.State, run *domain.Run, resource string) string {
+	rbs := s.RunbooksFor(resource)
+	if len(rbs) == 0 {
+		return " No runbook matches " + resource + "."
+	}
+	var names []string
+	for _, rb := range rbs {
+		run.Runbooks = append(run.Runbooks, rb.ID)
+		names = append(names, rb.Name)
+	}
+	return " Runbooks handed to the investigator: " + strings.Join(names, ", ") + "."
+}
+
+// runbookText renders the run's runbooks for a model prompt.
+func runbookText(s *domain.State, run *domain.Run) string {
+	var b strings.Builder
+	for _, id := range run.Runbooks {
+		if rb := s.Runbook(id); rb != nil {
+			fmt.Fprintf(&b, "\n--- Runbook: %s (labels %s) ---\n%s\n", rb.Name, selectorString(rb.Selector), rb.Body)
+		}
+	}
+	return b.String()
+}
+
+func selectorString(sel map[string]string) string {
+	var parts []string
+	for _, k := range sortedKeys(sel) {
+		parts = append(parts, k+"="+sel[k])
+	}
+	return strings.Join(parts, ", ")
+}
+
+func sortedKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

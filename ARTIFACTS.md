@@ -27,3 +27,7 @@ All three are private claude.ai artifacts owned by asitha.weerasinghe@ditio.no. 
 - State lives in the viewer's browser under localStorage key `beacon-proto-v1`. The demo bar's Reset clears it.
 - One scripted scenario, `disk-fill` on the Azure VM web-01, arrays `SC` (trigger to approval) and `AFTER` (approve to verified). New journeys are added as further arrays in the same shape.
 - Ask Beacon uses the runtime's `sample` capability when granted and falls back to scripted answers.
+
+## Note, 2026-10-30
+
+The live console in `web/` was restyled to the shadcn/ui look (zinc neutrals, Geist, 8px radius, icon sidebar, light and dark). The published design system artifact still shows the earlier IBM Plex look; `web/css/beacon.css` is now the source of truth for the console and the design system should be re-published from it when the screens settle.

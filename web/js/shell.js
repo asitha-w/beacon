@@ -3,25 +3,35 @@ import { el, Button } from './ds.js';
 import { store, sel } from './store.js';
 import { route, go } from './router.js';
 import { api } from './api.js';
+import { icon } from './icons.js';
 
-export const NAV = [['findings', 'Findings'], ['investigations', 'Investigations'], ['approvals', 'Approvals'], ['chat', 'Ask Beacon'], ['agents', 'Agents'], ['services', 'Apps'], ['connections', 'Connections'], ['responders', 'Responders'], ['consumption', 'Consumption']];
+export const NAV = [
+  ['findings', 'Findings', 'activity'], ['investigations', 'Investigations', 'search'], ['approvals', 'Approvals', 'shield'], ['chat', 'Ask Beacon', 'message'],
+  ['sep', 'Configure'],
+  ['agents', 'Agents', 'bot'], ['runbooks', 'Runbooks', 'book'], ['services', 'Apps', 'layers'], ['connections', 'Connections', 'plug'], ['responders', 'Responders', 'zap'], ['consumption', 'Consumption', 'gauge'],
+];
+function themeToggle() {
+  const dark = (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'dark';
+  return el('button', { class: 'iconbtn', title: dark ? 'Switch to light' : 'Switch to dark', onClick: () => { const next = dark ? 'light' : 'dark'; document.documentElement.dataset.theme = next; try { localStorage.setItem('beacon-theme', next); } catch (e) {} dispatchEvent(new HashChangeEvent('hashchange')); } }, [icon(dark ? 'sun' : 'moon')]);
+}
 
 export function shell(contentNode, opts = {}) {
   const s = store.state; const r = route().split('/')[0];
   const pending = sel.pendingApprovals().length;
   const rail = el('nav', { class: 'rail', 'aria-label': 'Beacon' }, [
-    el('div', { class: 'brand' }, [el('i'), 'Beacon']),
+    el('div', { class: 'brand' }, [el('i', null, [icon('beacon')]), 'Beacon']),
     el('div', { class: 'tenant' }, [el('span', { text: s.tenant ? s.tenant.name : 'No tenant' }), el('span', { class: 'label', text: s.tenant ? s.tenant.env : '' })]),
-    el('div', { class: 'nav' }, NAV.map((n) => el('a', { href: '#' + n[0], class: r === n[0] || (n[0] === 'investigations' && r === 'inv') ? 'active' : '' }, [n[1], n[0] === 'approvals' && pending ? el('span', { class: 'count', text: String(pending) }) : null]))),
-    el('div', { class: 'me' }, [el('div', { text: s.user ? s.user.name : '' }), el('div', { class: 'sm', text: s.user ? s.user.role : '' }), el('a', { href: '#', class: 'sm', text: 'Sign out', onClick: (e) => { e.preventDefault(); api.logout(); } })]),
+    el('div', { class: 'nav' }, NAV.map((n) => n[0] === 'sep' ? el('div', { class: 'sep', text: n[1] }) : el('a', { href: '#' + n[0], class: r === n[0] || (n[0] === 'investigations' && r === 'inv') ? 'active' : '' }, [icon(n[2]), n[1], n[0] === 'approvals' && pending ? el('span', { class: 'count', text: String(pending) }) : null]))),
+    el('div', { class: 'me' }, [el('span', { class: 'avatar', text: (s.user ? s.user.name : 'U').slice(0, 1).toUpperCase() }), el('div', { class: 'who' }, [el('span', { text: s.user ? s.user.name : '' }), el('span', { class: 'sm', text: s.user ? s.user.email : '' })]), el('a', { href: '#', title: 'Sign out', onClick: (e) => { e.preventDefault(); api.logout(); } }, [icon('logout')])]),
   ]);
-  const top = el('div', { class: 'topbar' }, [el('span', { class: 'crumb', text: opts.crumb || '' }), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: probeSummary() }), el('span', { class: 'badge', text: s.reasoner === 'claude' ? s.model : 'scripted mode' })]);
+  const crumbs = (opts.crumb || '').split(' / ');
+  const top = el('div', { class: 'topbar' }, [el('span', { class: 'crumb' }, crumbs.flatMap((c, i) => [i ? el('span', { text: '/' }) : null, i === crumbs.length - 1 ? el('b', { text: c }) : el('span', { text: c })])), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: probeSummary() }), el('span', { class: 'badge', text: s.reasoner === 'claude' ? s.model : 'scripted mode' }), themeToggle()]);
   const body = el('div', { class: 'body' + (opts.aside ? '' : ' noaside') }, [el('div', { class: 'content' }, [contentNode]), opts.aside ? el('aside', { class: 'aside', 'aria-label': 'Activity' }, [activityPanel()]) : null]);
   return el('div', { class: 'app' }, [rail, el('div', { class: 'main' }, [top, body])]);
 }
 export function setupShell(contentNode) {
   const s = store.state;
-  return el('div', { class: 'app', style: 'grid-template-columns:1fr' }, [el('div', { class: 'main' }, [el('div', { class: 'topbar' }, [el('div', { class: 'brand', style: 'padding:0' }, [el('i'), 'Beacon']), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: s.user ? s.user.email : '' })]), el('div', { class: 'body noaside' }, [el('div', { class: 'content' }, [contentNode])])])]);
+  return el('div', { class: 'app', style: 'grid-template-columns:1fr' }, [el('div', { class: 'main' }, [el('div', { class: 'topbar' }, [el('div', { class: 'brand', style: 'padding:0' }, [el('i', null, [icon('beacon')]), 'Beacon']), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: s.user ? s.user.email : '' }), themeToggle()]), el('div', { class: 'body noaside' }, [el('div', { class: 'content' }, [contentNode])])])]);
 }
 function probeSummary() {
   const s = store.state; const on = s.probe.hosts.length;

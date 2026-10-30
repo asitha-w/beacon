@@ -44,6 +44,8 @@ Settings are environment variables; see `.env.example`. `BEACON_MODEL` defaults 
 
 **Labels and apps.** Resources carry labels imported from provider tags and editable in Beacon. An app is a label selector; resources join by matching and findings are attributed to the most specific app. Runbooks will attach to the same labels.
 
+**Runbooks** are tenant-written Markdown attached to a label selector. The orchestrator hands every matching runbook to the investigator with the task, most specific first, and the run records which ones applied. A runbook guides; the responder policy still decides what may run.
+
 The operator talks to the orchestrator on the Ask Beacon page. It can list findings, describe resources, and start an investigation on request. Every model call is accounted per agent and per run on the Agents and Consumption pages.
 
 ## Scripted mode and live mode

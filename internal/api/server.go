@@ -49,6 +49,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/apps", s.saveApp)
 	mux.HandleFunc("DELETE /api/apps/{id}", s.deleteApp)
 	mux.HandleFunc("POST /api/resources/{id}/labels", s.setLabels)
+	mux.HandleFunc("POST /api/runbooks", s.saveRunbook)
+	mux.HandleFunc("DELETE /api/runbooks/{id}", s.deleteRunbook)
 	mux.HandleFunc("POST /api/probe/install", s.installProbe)
 	mux.HandleFunc("POST /api/approvals/{id}", s.decide)
 	mux.HandleFunc("POST /api/chat", s.chat)
@@ -307,6 +309,49 @@ func (s *Server) saveApp(w http.ResponseWriter, r *http.Request) {
 		return []store.Event{{Type: "apps", Data: st.Apps}, store.Activity(st, "run", fmt.Sprintf("%s saved app %s.", by, in.Name), "", false)}
 	})
 	writeJSON(w, 200, map[string]any{"ok": true, "id": in.ID})
+}
+
+// saveRunbook creates or updates a runbook by id.
+func (s *Server) saveRunbook(w http.ResponseWriter, r *http.Request) {
+	var in domain.Runbook
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, 400, err)
+		return
+	}
+	if strings.TrimSpace(in.Name) == "" || len(in.Selector) == 0 || strings.TrimSpace(in.Body) == "" {
+		writeErr(w, 400, errors.New("name, a selector and a body are required"))
+		return
+	}
+	by := s.userName()
+	s.st.Update(func(st *domain.State) []store.Event {
+		if in.ID == "" {
+			in.ID = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(in.Name), " ", "-"))
+		}
+		in.UpdatedAt = time.Now()
+		in.UpdatedBy = by
+		if rb := st.Runbook(in.ID); rb != nil {
+			*rb = in
+		} else {
+			cp := in
+			st.Runbooks = append(st.Runbooks, &cp)
+		}
+		return []store.Event{{Type: "runbooks", Data: st.Runbooks}, store.Activity(st, "run", fmt.Sprintf("%s saved runbook %s.", by, in.Name), "", false)}
+	})
+	writeJSON(w, 200, map[string]any{"ok": true, "id": in.ID})
+}
+
+func (s *Server) deleteRunbook(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	s.st.Update(func(st *domain.State) []store.Event {
+		for i, rb := range st.Runbooks {
+			if rb.ID == id {
+				st.Runbooks = append(st.Runbooks[:i], st.Runbooks[i+1:]...)
+				break
+			}
+		}
+		return []store.Event{{Type: "runbooks", Data: st.Runbooks}}
+	})
+	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 func (s *Server) deleteApp(w http.ResponseWriter, r *http.Request) {

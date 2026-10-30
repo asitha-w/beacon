@@ -11,6 +11,7 @@ import { pageFindings, drawTiles } from './pages/findings.js';
 import { pageInvestigations, pageInv } from './pages/investigations.js';
 import { pageChat } from './pages/chat.js';
 import { pageAgents } from './pages/agents.js';
+import { pageRunbooks } from './pages/runbooks.js';
 import { pageApprovals, pageServices, pageConnections, pageResponders, pageConsumption } from './pages/admin.js';
 
 const PAGES = {
@@ -20,6 +21,7 @@ const PAGES = {
   chat: { page: pageChat, crumb: 'Ask Beacon', aside: true },
   agents: { page: pageAgents, crumb: 'Agents' },
   services: { page: pageServices, crumb: 'Apps' },
+  runbooks: { page: pageRunbooks, crumb: 'Runbooks' },
   connections: { page: pageConnections, crumb: 'Connections' },
   responders: { page: pageResponders, crumb: 'Responders' },
   consumption: { page: pageConsumption, crumb: 'Consumption' },
@@ -63,5 +65,6 @@ function onEvent(ev) {
     else if (s.user && s.tenant && (h === 'login' || h === 'setup-tenant')) location.hash = '#findings';
   }
 }
+try { const t = localStorage.getItem('beacon-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 window.addEventListener('hashchange', render);
 connect(onEvent, (status) => { store.connection = status; if (status === 'reconnecting') toast('Connection to Beacon lost, reconnecting…'); });

@@ -22,6 +22,7 @@ export function apply(ev) {
     case 'connections': s.connections = ev.data; return 'full';
     case 'resources': s.resources = ev.data; return 'full';
     case 'apps': s.apps = ev.data; return 'full';
+    case 'runbooks': s.runbooks = ev.data; return 'full';
     case 'probe': s.probe = ev.data; return 'full';
     case 'finding': upsert(s.findings, ev.data, 'id', true); return 'full';
     case 'run': upsert(s.runs, ev.data, 'id', true); return 'full';
