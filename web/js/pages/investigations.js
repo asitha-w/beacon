@@ -65,7 +65,7 @@ export function pageInv(id) {
   if (r.summary && r.status === 'done') items.push(msg('agent', r.agent, ['Summary'], [el('p', { text: r.summary })]));
   const thread = el('div', { class: 'thread' }, items);
   const head = el('div', null, [el('div', { class: 'bc-row', style: 'margin-bottom:8px' }, [SeverityChip({ severity: f.severity }), StatusChip({ status: f.status }), el('span', { class: 'badge', text: (sel.agent(r.agent) || {}).name || r.agent })]), el('h1', { class: 'display', text: f.title }),
-    el('div', { style: 'margin-top:8px' }, [StatRow({ items: [{ value: duration(r), label: r.endedAt ? 'total' : 'running' }, { value: String(r.evidence.length), label: 'evidence rows' }, { value: tokens(r.usage.inputTokens + r.usage.outputTokens), label: 'tokens' }, { value: money(r.usage.costUsd), label: 'cost' }, f.resource + (f.service ? ' · ' + f.service : ''), r.id] })])]);
+    el('div', { style: 'margin-top:8px' }, [StatRow({ items: [{ value: duration(r), label: r.endedAt ? 'total' : 'running' }, { value: String(r.evidence.length), label: 'evidence rows' }, { value: tokens(r.usage.inputTokens + r.usage.outputTokens), label: 'tokens' }, { value: money(r.usage.costUsd), label: 'cost' }, f.resource + (f.service ? ' · app=' + f.service : ''), r.id] })])]);
   const rbs = (r.runbooks || []).map((id) => (s.runbooks || []).find((x) => x.id === id)).filter(Boolean);
   if (rbs.length) head.appendChild(el('div', { class: 'sm muted', style: 'margin-top:6px' }, ['Runbooks: ', ...rbs.flatMap((rb, i) => [i ? ', ' : '', el('a', { href: '#runbooks', text: rb.name })])]));
   return el('div', { class: 'page' }, [head, el('div', { class: 'card lg' }, [thread]), askBox(r, userName)]);

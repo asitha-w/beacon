@@ -12,8 +12,8 @@ import { pageInvestigations, pageInv } from './pages/investigations.js';
 import { pageChat } from './pages/chat.js';
 import { pageAgents } from './pages/agents.js';
 import { pageRunbooks } from './pages/runbooks.js';
-import { pageCells } from './pages/cells.js';
-import { pageApprovals, pageServices, pageConnections, pageResponders, pageConsumption } from './pages/admin.js';
+import { pageCells, pageCell } from './pages/cells.js';
+import { pageApprovals, pageConnections, pageResponders, pageConsumption } from './pages/admin.js';
 
 const PAGES = {
   findings: { page: pageFindings, crumb: 'Findings', aside: true },
@@ -21,7 +21,6 @@ const PAGES = {
   approvals: { page: pageApprovals, crumb: 'Approvals', aside: true },
   chat: { page: pageChat, crumb: 'Ask Beacon', aside: true },
   agents: { page: pageAgents, crumb: 'Agents' },
-  services: { page: pageServices, crumb: 'Apps' },
   runbooks: { page: pageRunbooks, crumb: 'Runbooks' },
   cells: { page: pageCells, crumb: 'Cells' },
   connections: { page: pageConnections, crumb: 'Connections' },
@@ -42,6 +41,7 @@ function render() {
   else {
     const parts = r.split('/');
     if (parts[0] === 'inv') out = shell(pageInv(parts[1]), { crumb: 'Investigations / ' + parts[1], aside: true });
+    else if (parts[0] === 'cell') out = shell(pageCell(parts[1]), { crumb: 'Cells / ' + parts[1] });
     else { const p = PAGES[parts[0]] || PAGES.findings; out = shell(p.page(), { crumb: p.crumb, aside: !!p.aside }); }
   }
   app.replaceWith(out); out.id = 'app';

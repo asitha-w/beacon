@@ -48,8 +48,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/connections/{id}", s.deleteConnection)
 	mux.HandleFunc("POST /api/connections/{id}/onboard", s.onboard)
 	mux.HandleFunc("DELETE /api/cells/{id}", s.detachCell)
-	mux.HandleFunc("POST /api/apps", s.saveApp)
-	mux.HandleFunc("DELETE /api/apps/{id}", s.deleteApp)
+	mux.HandleFunc("POST /api/cells/{id}/telemetry", s.setTelemetry)
 	mux.HandleFunc("POST /api/cells/{id}/labels", s.setLabels)
 	mux.HandleFunc("POST /api/runbooks", s.saveRunbook)
 	mux.HandleFunc("DELETE /api/runbooks/{id}", s.deleteRunbook)
@@ -289,7 +288,7 @@ func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request) {
 func syncProbe(st *domain.State) {
 	st.Probe.Expected = st.Probe.Expected[:0]
 	for _, c := range st.Cells {
-		if c.AgentCapable {
+		if c.ProbeCapable {
 			st.Probe.Expected = append(st.Probe.Expected, c.ID)
 		}
 	}
@@ -373,34 +372,29 @@ func (s *Server) detachCell(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-// saveApp creates or updates an app by id.
-func (s *Server) saveApp(w http.ResponseWriter, r *http.Request) {
-	var in domain.App
+// setTelemetry replaces the probe configuration of a cell.
+func (s *Server) setTelemetry(w http.ResponseWriter, r *http.Request) {
+	var in domain.Telemetry
 	if err := readJSON(r, &in); err != nil {
 		writeErr(w, 400, err)
 		return
 	}
-	if strings.TrimSpace(in.Name) == "" || len(in.Selector) == 0 {
-		writeErr(w, 400, errors.New("name and at least one selector label are required"))
+	by := s.userName()
+	var found bool
+	s.st.Update(func(st *domain.State) []store.Event {
+		c := st.Cell(r.PathValue("id"))
+		if c == nil {
+			return nil
+		}
+		found = true
+		c.Telemetry = in
+		return []store.Event{{Type: "cells", Data: st.Cells}, store.Activity(st, "run", fmt.Sprintf("%s changed the probe telemetry on %s. Config pushed over OpAMP.", by, c.ID), "", false)}
+	})
+	if !found {
+		writeErr(w, 404, errors.New("no such cell"))
 		return
 	}
-	by := s.userName()
-	s.st.Update(func(st *domain.State) []store.Event {
-		if in.ID == "" {
-			in.ID = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(in.Name), " ", "-"))
-		}
-		if a := st.App(in.ID); a != nil {
-			*a = in
-		} else {
-			cp := in
-			st.Apps = append(st.Apps, &cp)
-		}
-		for _, f := range st.Findings {
-			f.Service = st.AppName(f.Resource)
-		}
-		return []store.Event{{Type: "apps", Data: st.Apps}, store.Activity(st, "run", fmt.Sprintf("%s saved app %s.", by, in.Name), "", false)}
-	})
-	writeJSON(w, 200, map[string]any{"ok": true, "id": in.ID})
+	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 // saveRunbook creates or updates a runbook by id.
@@ -446,24 +440,7 @@ func (s *Server) deleteRunbook(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-func (s *Server) deleteApp(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	s.st.Update(func(st *domain.State) []store.Event {
-		for i, a := range st.Apps {
-			if a.ID == id {
-				st.Apps = append(st.Apps[:i], st.Apps[i+1:]...)
-				break
-			}
-		}
-		for _, f := range st.Findings {
-			f.Service = st.AppName(f.Resource)
-		}
-		return []store.Event{{Type: "apps", Data: st.Apps}}
-	})
-	writeJSON(w, 200, map[string]any{"ok": true})
-}
-
-// setLabels replaces the labels on a resource.
+// setLabels replaces the labels on a cell.
 func (s *Server) setLabels(w http.ResponseWriter, r *http.Request) {
 	var in struct{ Labels map[string]string }
 	if err := readJSON(r, &in); err != nil {
@@ -483,7 +460,7 @@ func (s *Server) setLabels(w http.ResponseWriter, r *http.Request) {
 			res.Labels = map[string]string{}
 		}
 		for _, f := range st.Findings {
-			f.Service = st.AppName(f.Resource)
+			f.Service = st.GroupName(f.Resource)
 		}
 		return []store.Event{{Type: "cells", Data: st.Cells}, store.Activity(st, "run", fmt.Sprintf("%s relabelled %s.", by, res.ID), "", false)}
 	})
@@ -504,14 +481,14 @@ func (s *Server) installProbe(w http.ResponseWriter, _ *http.Request) {
 		ready = true
 		st.Probe.Status = domain.ProbeWaiting
 		for _, c := range st.Cells {
-			if c.AgentCapable && c.Tier != domain.TierAgent {
+			if c.ProbeCapable && c.Tier != domain.TierProbe {
 				c.Channel = domain.ChannelWaiting
 			}
 		}
 		return []store.Event{{Type: "probe", Data: st.Probe}, {Type: "cells", Data: st.Cells}}
 	})
 	if !ready {
-		writeErr(w, 409, errors.New("onboard at least one agent-capable cell first"))
+		writeErr(w, 409, errors.New("onboard at least one probe-capable cell first"))
 		return
 	}
 	go func() {
@@ -540,10 +517,10 @@ func (s *Server) installProbe(w http.ResponseWriter, _ *http.Request) {
 					st.Probe.Status = domain.ProbeOnline
 				}
 				if c := st.Cell(h); c != nil {
-					c.Tier = domain.TierAgent
+					c.Tier = domain.TierProbe
 					c.Channel = domain.ChannelOnline
 				}
-				return []store.Event{{Type: "probe", Data: st.Probe}, {Type: "cells", Data: st.Cells}, store.Activity(st, "signal", "Agent on "+h+" dialled in over OpAMP. Cell raised to the agent tier.", "", false), store.Toast("Agent online: " + h)}
+				return []store.Event{{Type: "probe", Data: st.Probe}, {Type: "cells", Data: st.Cells}, store.Activity(st, "signal", "Probe on "+h+" dialled in over OpAMP. Cell raised to the probe tier.", "", false), store.Toast("Probe online: " + h)}
 			})
 		}
 	}()
@@ -685,8 +662,8 @@ func (s *Server) startScenario(w http.ResponseWriter, r *http.Request) {
 			errOut = fmt.Errorf("onboard %s as a cell first", sc.Resource)
 			return nil
 		}
-		if cell.AgentCapable && cell.Tier != domain.TierAgent {
-			errOut = fmt.Errorf("install the agent on %s first; this scenario needs in-guest signals", sc.Resource)
+		if cell.ProbeCapable && cell.Tier != domain.TierProbe {
+			errOut = fmt.Errorf("install the probe on %s first; this scenario needs in-guest signals", sc.Resource)
 			return nil
 		}
 		for _, o := range st.Scenarios {

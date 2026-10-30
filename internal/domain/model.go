@@ -166,8 +166,8 @@ type Probe struct {
 
 // Cell tiers and channel states.
 const (
-	TierBasic = "basic" // provider metrics and provider actions through the API
-	TierAgent = "agent" // the probe is installed: in-guest metrics, logs, files, commands
+	TierBasic = "basic" // provider sensors and provider actions through the API
+	TierProbe = "probe" // the probe is installed: in-guest metrics, logs, files, commands
 
 	ChannelConnected = "connected"
 	ChannelWaiting   = "waiting"
@@ -175,9 +175,43 @@ const (
 	ChannelOffline   = "offline"
 )
 
+// LogSource is one log the probe tails: a file path on a VM, a workload on Kubernetes.
+type LogSource struct {
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+}
+
+// Receiver is one extra metrics receiver the probe runs, such as nginx or kubelet.
+type Receiver struct {
+	Name    string `json:"name"`
+	Detail  string `json:"detail"`
+	Enabled bool   `json:"enabled"`
+}
+
+// Telemetry is what the probe on a cell collects. Beacon renders it into the
+// OpenTelemetry Collector config it pushes over OpAMP. The investigator can
+// only read what is enabled here.
+type Telemetry struct {
+	HostMetrics bool        `json:"hostMetrics"`
+	Processes   bool        `json:"processes"`
+	Logs        []LogSource `json:"logs"`
+	Receivers   []Receiver  `json:"receivers"`
+	OTLP        bool        `json:"otlp"` // the application may push traces and metrics to the probe
+}
+
+// LogEnabled reports whether a log source is on.
+func (t Telemetry) LogEnabled(name string) bool {
+	for _, l := range t.Logs {
+		if l.Name == name {
+			return l.Enabled
+		}
+	}
+	return false
+}
+
 // Cell is the most specific thing Beacon manages: one VM, one cluster, one
 // server. It has its own isolated channel in the tenant runtime, came through
-// one connection, and carries the labels that apps and runbooks select on.
+// one connection, and carries the labels that runbooks select on.
 type Cell struct {
 	ID            string            `json:"id"`
 	Kind          string            `json:"kind"`
@@ -187,8 +221,9 @@ type Cell struct {
 	ConnectionID  string            `json:"connectionId,omitempty"`
 	Tier          string            `json:"tier"`
 	Channel       string            `json:"channel"`
-	AgentCapable  bool              `json:"agentCapable"`
+	ProbeCapable  bool              `json:"probeCapable"`
 	Labels        map[string]string `json:"labels"`
+	Telemetry     Telemetry         `json:"telemetry"`
 	OnboardedAt   time.Time         `json:"onboardedAt"`
 }
 
@@ -199,24 +234,10 @@ type Candidate struct {
 	Detail        string            `json:"detail"`
 	ResourceGroup string            `json:"resourceGroup,omitempty"`
 	Supported     bool              `json:"supported"`
-	AgentCapable  bool              `json:"agentCapable"`
+	ProbeCapable  bool              `json:"probeCapable"`
 	Access        string            `json:"access"` // read, write
 	Labels        map[string]string `json:"labels"`
 }
-
-// App groups cells by a label selector and decides who is paged. It can be a
-// real application, a gateway, or one machine that stands alone.
-type App struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Selector    map[string]string `json:"selector"`
-	Criticality string            `json:"criticality"`
-	Owner       string            `json:"owner"`
-	SLO         string            `json:"slo"`
-}
-
-// Matches reports whether every selector pair is present on the resource.
-func (a *App) Matches(r *Cell) bool { return selectorMatches(a.Selector, r) }
 
 func selectorMatches(sel map[string]string, r *Cell) bool {
 	if len(sel) == 0 {
@@ -488,7 +509,6 @@ type State struct {
 	Connections []*Connection     `json:"connections"`
 	Probe       Probe             `json:"probe"`
 	Cells       []*Cell           `json:"cells"`
-	Apps        []*App            `json:"apps"`
 	Runbooks    []*Runbook        `json:"runbooks"`
 	Responders  []*Responder      `json:"responders"`
 	Agents      []*AgentDef       `json:"agents"`
@@ -583,35 +603,12 @@ func (s *State) Cell(id string) *Cell {
 	return nil
 }
 
-// AppOf returns the most specific app whose selector matches the cell, or nil.
-func (s *State) AppOf(r *Cell) *App {
-	var best *App
-	for _, a := range s.Apps {
-		if a.Matches(r) && (best == nil || len(a.Selector) > len(best.Selector)) {
-			best = a
-		}
-	}
-	return best
-}
-
-// AppName returns the app name for a cell id, or "Unassigned".
-func (s *State) AppName(cellID string) string {
+// GroupName returns the cell's app label, used to attribute findings, or "".
+func (s *State) GroupName(cellID string) string {
 	if r := s.Cell(cellID); r != nil {
-		if a := s.AppOf(r); a != nil {
-			return a.Name
-		}
+		return r.Labels["app"]
 	}
-	return "Unassigned"
-}
-
-// App returns the app with the id, or nil.
-func (s *State) App(id string) *App {
-	for _, a := range s.Apps {
-		if a.ID == id {
-			return a
-		}
-	}
-	return nil
+	return ""
 }
 
 // Connection returns the connection with the id, or nil.

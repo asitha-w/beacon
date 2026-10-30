@@ -30,12 +30,15 @@ ANTHROPIC_API_KEY=... ./start.sh  # live mode: the investigator and orchestrator
 
 Open http://localhost:8080, sign in with anything, create a tenant, validate a cloud connection, onboard what it discovered as cells, install the agent on them, then inject a fault from the demo bar at the bottom.
 
+![Beacon architecture](docs/architecture/beacon-architecture.png)
+
 ## The model
 
 - A **tenant** is a collection of cells served by one **runtime**: isolated workers, its own credentials, one static egress address.
 - A **connection** is an identity at a scope on a provider. It discovers what Beacon could manage and with what access; it manages nothing by itself.
 - A **cell** is the most specific managed thing: one VM, one cluster, one server. It came through one connection, has its own isolated channel in the runtime, and carries labels. Every cell starts at the **basic** tier (provider metrics and actions through the API); installing the agent raises it to the **agent** tier (in-guest metrics, logs, files, commands).
-- **Apps** and **runbooks** are label selectors over cells. An app is a named label group with an owner, a criticality and an SLO; it can be an application, a gateway or a single machine.
+- A cell shows two layers: **provider sensors**, what the connection gives for free, and **probe telemetry**, what the probe on the cell collects. The probe is an unmodified OpenTelemetry Collector; its config is rendered from the telemetry settings and pushed over OpAMP. The investigator can only read what the telemetry enables.
+- **Runbooks** are label selectors over cells. Owner and criticality are labels too. There is no separate app object; `app=shop` is just a label.
 - One **agent team** per tenant works every cell: the orchestrator the operator talks to, the specialists it starts, and the deterministic remediator and verifier. A run binds a specialist to one cell.
 
 Settings are environment variables; see `.env.example`. `BEACON_MODEL` defaults to `claude-opus-5-5`.

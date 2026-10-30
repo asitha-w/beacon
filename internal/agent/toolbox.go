@@ -175,14 +175,23 @@ func (t *Toolbox) Call(ctx context.Context, name string, in map[string]any) (str
 func (t *Toolbox) exec(ctx context.Context, name string, in map[string]any) (string, error) {
 	switch name {
 	case "read_metrics":
+		if err := t.needsProbe(str(in, "resource"), str(in, "metric")); err != nil {
+			return "", err
+		}
 		return t.w.QueryMetrics(str(in, "resource"), str(in, "metric"), num(in, "window_minutes", 60))
 	case "tail_logs":
+		if err := t.logAllowed(str(in, "resource"), str(in, "path")); err != nil {
+			return "", err
+		}
 		return t.w.TailLogs(str(in, "resource"), str(in, "path"), num(in, "lines", 50))
 	case "get_activity":
 		return t.w.ActivityLog(str(in, "resource"))
 	case "get_resource_state":
 		return t.w.ResourceState(str(in, "resource"))
 	case "read_file":
+		if err := t.needsProbe(str(in, "resource"), ""); err != nil {
+			return "", err
+		}
 		return t.w.ReadFile(str(in, "resource"), str(in, "path"))
 	case "record_evidence":
 		e := domain.Evidence{Kind: str(in, "kind"), Claim: str(in, "claim"), Pointer: str(in, "pointer")}
@@ -530,4 +539,53 @@ func SortedKeys(m map[string]any) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// inGuestMetrics are only visible through the probe; the rest come from the provider.
+var inGuestMetrics = map[string]bool{"memory_percent": true, "disk_used_percent": true, "log_growth_mb_per_min": true, "http_up": true, "pod_restarts_10m": true, "p95_latency_ms": true}
+
+// needsProbe refuses in-guest reads on cells without the probe, and any read on a non-cell.
+func (t *Toolbox) needsProbe(cellID, metric string) error {
+	var err error
+	t.st.View(func(s *domain.State) {
+		c := s.Cell(cellID)
+		if c == nil {
+			err = fmt.Errorf("%q is not an onboarded cell", cellID)
+			return
+		}
+		if c.Tier != domain.TierProbe && (metric == "" || inGuestMetrics[metric]) {
+			err = fmt.Errorf("%s is at the basic tier; %s needs the probe. Provider sensors still give cpu_percent, requests_per_second, error_rate_percent and state", cellID, map[bool]string{true: "reading files", false: metric}[metric == ""])
+			return
+		}
+		if metric != "" && metric != "cpu_percent" && metric != "requests_per_second" && metric != "error_rate_percent" && metric != "connections" && !c.Telemetry.HostMetrics {
+			err = fmt.Errorf("host metrics are switched off in the probe telemetry of %s", cellID)
+		}
+	})
+	return err
+}
+
+// logAllowed refuses logs the probe is not configured to tail.
+func (t *Toolbox) logAllowed(cellID, path string) error {
+	var err error
+	t.st.View(func(s *domain.State) {
+		c := s.Cell(cellID)
+		if c == nil {
+			err = fmt.Errorf("%q is not an onboarded cell", cellID)
+			return
+		}
+		if c.Tier != domain.TierProbe {
+			err = fmt.Errorf("%s is at the basic tier; logs need the probe", cellID)
+			return
+		}
+		if !c.Telemetry.LogEnabled(path) {
+			var on []string
+			for _, l := range c.Telemetry.Logs {
+				if l.Enabled {
+					on = append(on, l.Name)
+				}
+			}
+			err = fmt.Errorf("%s is not a log source in the probe telemetry of %s; enabled: %s", path, cellID, strings.Join(on, ", "))
+		}
+	})
+	return err
 }

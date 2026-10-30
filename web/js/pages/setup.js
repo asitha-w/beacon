@@ -25,7 +25,7 @@ export function pageLogin() {
 }
 
 function stepsBar(n) {
-  const names = ['Sign in', 'Create tenant', 'Connect clouds', 'Onboard cells', 'Install agents'];
+  const names = ['Sign in', 'Create tenant', 'Connect clouds', 'Onboard cells', 'Install probes'];
   return el('div', { class: 'steps' }, names.map((s, i) => el('span', { class: i < n ? 'done' : (i === n ? '' : 'muted') }, [i < n ? '✓ ' : (i + 1) + '. ', i === n ? el('b', { text: s }) : s])));
 }
 
@@ -50,17 +50,17 @@ export function pageSetupConnect() {
   const azConns = sel.conns('azure'), ucConns = sel.conns('upcloud');
   const azCard = azConns.length ? el('div', { class: 'conn' }, azConns.map((c) => connectionCard(c))) : el('div', { class: 'card conn' }, [el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: 'Microsoft Azure' }), connChip('none')]), azureForm()]);
   const ucCard = ucConns.length ? el('div', { class: 'conn' }, ucConns.map((c) => connectionCard(c))) : el('div', { class: 'card conn' }, [el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: 'UpCloud' }), connChip('none')]), upcloudForm()]);
-  const cells = s.cells; const pending = cells.filter((c) => c.agentCapable && c.tier !== 'agent');
+  const cells = s.cells; const pending = cells.filter((c) => c.probeCapable && c.tier !== 'probe');
   const rt = s.tenant ? s.tenant.runtime : 'runtime';
-  const cmd = `curl -fsSL https://agent.beacon.example/install.sh | sh -s -- \\\n  --runtime ${rt} --gateway ${rt}.beacon.example:4317 --enroll-token bpt_6f2a…`;
+  const cmd = `curl -fsSL https://probe.beacon.example/install.sh | sh -s -- \\\n  --runtime ${rt} --gateway ${rt}.beacon.example:4317 --enroll-token bpt_6f2a…`;
   const step = !cells.length ? (sel.connected('azure') || sel.connected('upcloud') ? 3 : 2) : (pr.status === 'online' || !pending.length ? 5 : 4);
   const agentCard = cells.length ? el('div', { class: 'card conn' }, [
-    el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: 'Install the agent on your cells' }), el('span', { class: 'sm muted', text: `${cells.length} cell${cells.length === 1 ? '' : 's'} onboarded · ${s.probe.hosts.length} agent${s.probe.hosts.length === 1 ? '' : 's'} online` })]),
-    el('p', { class: 'sm muted', text: 'Every cell starts at the basic tier: provider metrics and provider actions. The agent is an unmodified OpenTelemetry Collector that dials out to the runtime over mTLS; it raises a cell to the agent tier with in-guest metrics, logs, files and commands.' }),
+    el('div', { class: 'conn-head' }, [el('span', { class: 'name', text: 'Install the probe on your cells' }), el('span', { class: 'sm muted', text: `${cells.length} cell${cells.length === 1 ? '' : 's'} onboarded · ${s.probe.hosts.length} probe${s.probe.hosts.length === 1 ? '' : 's'} online` })]),
+    el('p', { class: 'sm muted', text: 'Every cell starts at the basic tier: provider sensors and provider actions. The probe is an unmodified OpenTelemetry Collector that dials out to the runtime over mTLS; it raises a cell to the probe tier with in-guest metrics, logs, files and commands.' }),
     el('div', { class: 'code', text: cmd }),
     pending.length && pr.status !== 'waiting' ? el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: `I ran it on ${pending.map((c) => c.id).join(', ')}`, onClick: () => api.installProbe().catch((e) => toast(e.message)) })])
-      : pr.status === 'waiting' ? el('p', { class: 'muted', text: `Waiting for agents to dial in… ${pr.hosts.length} of ${pr.expected.length} online.` })
-        : el('div', { class: 'bc-row' }, cells.map((c) => el('span', { class: 'bc-pill ' + (c.tier === 'agent' ? 'bc-pill-available' : 'bc-pill-none'), text: c.id + ' · ' + c.tier }))),
+      : pr.status === 'waiting' ? el('p', { class: 'muted', text: `Waiting for probes to dial in… ${pr.hosts.length} of ${pr.expected.length} online.` })
+        : el('div', { class: 'bc-row' }, cells.map((c) => el('span', { class: 'bc-pill ' + (c.tier === 'probe' ? 'bc-pill-available' : 'bc-pill-none'), text: c.id + ' · ' + c.tier }))),
   ]) : null;
   const done = cells.length > 0 && !pending.length;
   return el('div', { class: 'page' }, [stepsBar(step), el('h1', { class: 'display', text: 'Connect your clouds' }),

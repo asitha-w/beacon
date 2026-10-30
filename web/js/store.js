@@ -20,7 +20,6 @@ export function apply(ev) {
     case 'connection': upsert(s.connections, ev.data); return 'full';
     case 'connections': s.connections = ev.data; return 'full';
     case 'cells': s.cells = ev.data; return 'full';
-    case 'apps': s.apps = ev.data; return 'full';
     case 'runbooks': s.runbooks = ev.data; return 'full';
     case 'probe': s.probe = ev.data; return 'full';
     case 'finding': upsert(s.findings, ev.data, 'id', true); return 'full';
@@ -68,8 +67,6 @@ export const sel = {
   conns: (provider) => store.state.connections.filter((c) => c.provider === provider),
   connected: (provider) => store.state.connections.some((c) => c.provider === provider && c.status === 'connected'),
   cell: (id) => store.state.cells.find((c) => c.id === id),
-  appOf: (cell) => { let best = null; store.state.apps.forEach((a) => { if (matchesSel(a.selector, cell) && (!best || Object.keys(a.selector).length > Object.keys(best.selector).length)) best = a; }); return best; },
-  cellsOf: (app) => store.state.cells.filter((c) => sel.appOf(c) && sel.appOf(c).id === app.id),
   cellsMatching: (selector) => store.state.cells.filter((c) => matchesSel(selector, c)),
   sharedWith: (cell) => store.state.cells.filter((c) => c.id !== cell.id && c.connectionId === cell.connectionId).length,
   metric: (host, k) => (store.metrics.hosts[host] || {})[k],

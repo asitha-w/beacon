@@ -10,14 +10,14 @@ import "time"
 // what Beacon saw and cannot manage yet.
 var Inventory = map[string][]Candidate{
 	"azure": {
-		{ID: "web-01", Kind: "Azure VM", Detail: "Standard_B2s · westeurope", ResourceGroup: "rg-shop-prod", Supported: true, AgentCapable: true, Labels: map[string]string{"app": "shop", "tier": "web", "env": "production", "os": "linux"}},
-		{ID: "aks-shop", Kind: "AKS cluster", Detail: "3 nodes · 1.31", ResourceGroup: "rg-shop-prod", Supported: true, AgentCapable: true, Labels: map[string]string{"app": "shop", "tier": "api", "env": "production", "platform": "kubernetes"}},
+		{ID: "web-01", Kind: "Azure VM", Detail: "Standard_B2s · westeurope", ResourceGroup: "rg-shop-prod", Supported: true, ProbeCapable: true, Labels: map[string]string{"app": "shop", "tier": "web", "env": "production", "os": "linux", "owner": "platform@shop.example", "criticality": "critical"}},
+		{ID: "aks-shop", Kind: "AKS cluster", Detail: "3 nodes · 1.31", ResourceGroup: "rg-shop-prod", Supported: true, ProbeCapable: true, Labels: map[string]string{"app": "shop", "tier": "api", "env": "production", "platform": "kubernetes", "owner": "platform@shop.example", "criticality": "critical"}},
 		{ID: "la-shop", Kind: "Log Analytics workspace", Detail: "workspace", ResourceGroup: "rg-shop-prod", Labels: map[string]string{"app": "shop", "tier": "observability", "env": "production"}},
 		{ID: "stshopprod", Kind: "Storage account", Detail: "Standard_LRS", ResourceGroup: "rg-shop-prod", Labels: map[string]string{"app": "shop", "env": "production"}},
-		{ID: "vm-staging-01", Kind: "Azure VM", Detail: "Standard_B1s · westeurope", ResourceGroup: "rg-shop-staging", Supported: true, AgentCapable: true, Labels: map[string]string{"app": "shop", "tier": "web", "env": "staging", "os": "linux"}},
+		{ID: "vm-staging-01", Kind: "Azure VM", Detail: "Standard_B1s · westeurope", ResourceGroup: "rg-shop-staging", Supported: true, ProbeCapable: true, Labels: map[string]string{"app": "shop", "tier": "web", "env": "staging", "os": "linux"}},
 	},
 	"upcloud": {
-		{ID: "edge-01", Kind: "UpCloud server", Detail: "1 vCPU 1 GB · de-fra1", Supported: true, AgentCapable: true, Labels: map[string]string{"app": "edge", "tier": "proxy", "env": "production", "os": "linux"}},
+		{ID: "edge-01", Kind: "UpCloud server", Detail: "1 vCPU 1 GB · de-fra1", Supported: true, ProbeCapable: true, Labels: map[string]string{"app": "edge", "tier": "proxy", "env": "production", "os": "linux", "owner": "ops@shop.example", "criticality": "standard"}},
 		{ID: "db-01", Kind: "UpCloud managed PostgreSQL", Detail: "2 vCPU · fi-hel2", Labels: map[string]string{"app": "shop", "tier": "data", "env": "production"}},
 	},
 }
@@ -47,16 +47,24 @@ func NewCell(c *Connection, cand *Candidate) *Cell {
 	for k, v := range cand.Labels {
 		labels[k] = v
 	}
-	return &Cell{ID: cand.ID, Kind: cand.Kind, Detail: cand.Detail, Provider: c.Provider, ResourceGroup: cand.ResourceGroup, ConnectionID: c.ID, Tier: TierBasic, Channel: ChannelConnected, AgentCapable: cand.AgentCapable, Labels: labels, OnboardedAt: time.Now()}
+	return &Cell{ID: cand.ID, Kind: cand.Kind, Detail: cand.Detail, Provider: c.Provider, ResourceGroup: cand.ResourceGroup, ConnectionID: c.ID, Tier: TierBasic, Channel: ChannelConnected, ProbeCapable: cand.ProbeCapable, Labels: labels, Telemetry: DefaultTelemetry(cand.Kind), OnboardedAt: time.Now()}
 }
 
-// SeedApps groups the estate by label selector.
-func SeedApps() []*App {
-	return []*App{
-		{ID: "shop-web", Name: "Shop web", Selector: map[string]string{"app": "shop", "tier": "web"}, Criticality: "Critical", Owner: "platform@shop.example", SLO: "99.9% availability, 30d"},
-		{ID: "shop-api", Name: "Shop API", Selector: map[string]string{"app": "shop", "tier": "api"}, Criticality: "Critical", Owner: "platform@shop.example", SLO: "99.9% availability, 30d"},
-		{ID: "shop-data", Name: "Shop data", Selector: map[string]string{"app": "shop", "tier": "data"}, Criticality: "Critical", Owner: "data@shop.example", SLO: "none yet"},
-		{ID: "edge", Name: "Edge", Selector: map[string]string{"app": "edge"}, Criticality: "Standard", Owner: "ops@shop.example", SLO: "none yet"},
+// DefaultTelemetry is the probe configuration Beacon proposes for a kind.
+func DefaultTelemetry(kind string) Telemetry {
+	switch kind {
+	case "AKS cluster":
+		return Telemetry{HostMetrics: true, Processes: false, OTLP: true,
+			Logs:      []LogSource{{Name: "shop-api", Enabled: true}, {Name: "ingress-nginx", Enabled: true}},
+			Receivers: []Receiver{{Name: "kubelet", Detail: "node and pod metrics", Enabled: true}, {Name: "kube-state", Detail: "deployments, rollouts, restarts", Enabled: true}, {Name: "nginx-ingress", Detail: "upstream status codes", Enabled: false}}}
+	case "Azure VM":
+		return Telemetry{HostMetrics: true, Processes: true, OTLP: false,
+			Logs:      []LogSource{{Name: "/var/log/syslog", Enabled: true}, {Name: "/var/log/nginx/access.log", Enabled: true}, {Name: "/var/log/nginx/error.log", Enabled: true}, {Name: "/var/log/auth.log", Enabled: false}},
+			Receivers: []Receiver{{Name: "nginx", Detail: "stub_status: requests, connections", Enabled: true}, {Name: "filestats", Detail: "size and age of watched files", Enabled: true}}}
+	default:
+		return Telemetry{HostMetrics: true, Processes: true, OTLP: false,
+			Logs:      []LogSource{{Name: "/var/log/syslog", Enabled: true}, {Name: "/var/log/nginx/error.log", Enabled: true}, {Name: "/var/log/auth.log", Enabled: false}},
+			Receivers: []Receiver{{Name: "nginx", Detail: "stub_status: requests, connections", Enabled: true}}}
 	}
 }
 
@@ -246,7 +254,6 @@ func NewState(model, reasoner string) *State {
 		Connections: []*Connection{},
 		Probe:       Probe{Status: ProbeNone, Hosts: []string{}, Expected: []string{}},
 		Cells:       []*Cell{},
-		Apps:        SeedApps(),
 		Runbooks:    SeedRunbooks(),
 		Responders:  SeedResponders(),
 		Agents:      SeedAgents(model),

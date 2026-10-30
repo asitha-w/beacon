@@ -8,7 +8,7 @@ import { icon } from './icons.js';
 export const NAV = [
   ['findings', 'Findings', 'activity'], ['investigations', 'Investigations', 'search'], ['approvals', 'Approvals', 'shield'], ['chat', 'Ask Beacon', 'message'],
   ['sep', 'Configure'],
-  ['cells', 'Cells', 'server'], ['connections', 'Connections', 'plug'], ['services', 'Apps', 'layers'], ['runbooks', 'Runbooks', 'book'], ['agents', 'Agents', 'bot'], ['responders', 'Responders', 'zap'], ['consumption', 'Consumption', 'gauge'],
+  ['cells', 'Cells', 'server'], ['connections', 'Connections', 'plug'], ['runbooks', 'Runbooks', 'book'], ['agents', 'Agents', 'bot'], ['responders', 'Responders', 'zap'], ['consumption', 'Consumption', 'gauge'],
 ];
 function themeToggle() {
   const dark = (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'dark';
@@ -34,15 +34,15 @@ export function setupShell(contentNode) {
   return el('div', { class: 'app', style: 'grid-template-columns:1fr' }, [el('div', { class: 'main' }, [el('div', { class: 'topbar' }, [el('div', { class: 'brand', style: 'padding:0' }, [el('i', null, [icon('beacon')]), 'Beacon']), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: s.user ? s.user.email : '' }), themeToggle()]), el('div', { class: 'body noaside' }, [el('div', { class: 'content' }, [contentNode])])])]);
 }
 function probeSummary() {
-  const s = store.state; const cells = s.cells.length; const agents = s.probe.hosts.length;
+  const s = store.state; const cells = s.cells.length; const probes = s.probe.hosts.length;
   if (!cells) return s.connections.some((c) => c.status === 'connected') ? 'Connected · no cells yet' : 'Not connected';
-  return `${cells} cell${cells === 1 ? '' : 's'} · ${agents} agent${agents === 1 ? '' : 's'} online`;
+  return `${cells} cell${cells === 1 ? '' : 's'} · ${probes} probe${probes === 1 ? '' : 's'} online`;
 }
 export function activityPanel() {
   const s = store.state;
   const items = s.activity.length ? s.activity.map((a) => {
     const n = el('div', { class: 'act' + (a.task ? ' task' : '') }, [el('span', { class: 't', text: fmtTime(a.at) + ' · ' + a.kind }), el('span', { text: a.text })]);
-    if (a.runId) n.appendChild(el('div', { class: 'bc-row', style: 'margin-top:6px' }, [Button({ variant: a.task ? 'primary' : 'quiet', label: a.task ? 'Open approval' : 'Open run', onClick: () => go('inv/' + a.runId) })]));
+    if (a.runId && sel.run(a.runId)) n.appendChild(el('div', { class: 'bc-row', style: 'margin-top:6px' }, [Button({ variant: a.task ? 'primary' : 'quiet', label: a.task ? 'Open approval' : 'Open run', onClick: () => go('inv/' + a.runId) })]));
     return n;
   }) : [el('div', { class: 'empty sm', text: 'Quiet. Signals, runs, approvals and notifications appear here as they happen.' })];
   return el('div', { class: 'activity' }, [el('div', { class: 'label', text: 'Activity' })].concat(items));

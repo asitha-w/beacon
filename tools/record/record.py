@@ -99,7 +99,7 @@ class Demo:
 
 
 def part1(d: Demo):
-    d.title("Onboarding", "Part 1 of 4 · sign in, tenant, connections, cells, agents")
+    d.title("Onboarding", "Part 1 of 4 · sign in, tenant, connections, cells, probes, agents")
     d.go("login")
     d.type(d.page.get_by_placeholder("you@company.example"), "asitha@shop.example")
     d.type(d.page.get_by_placeholder("Password"), "demo-password", delay=30)
@@ -129,6 +129,12 @@ def part1(d: Demo):
     d.hover_read(d.page.get_by_text("one isolated channel per cell"), 3)
     d.hover_read(d.page.get_by_text("identity shared with").first, 2.5)
     d.hover_read(d.page.get_by_text("dedicated identity").first, 2.5)
+    # one cell in depth: provider sensors and probe telemetry
+    d.click(d.page.locator("tr.row").first, pause=2.5)
+    d.hover_read(d.page.get_by_text("Provider sensors"), 3)
+    d.hover_read(d.page.get_by_text("Probe telemetry"), 3)
+    d.hover_read(d.page.get_by_text("/var/log/nginx/access.log"), 2.5)
+    d.click(d.page.get_by_text("Collector config the probe receives"), pause=3)
     d.go("agents", 2.5)
     d.hover_read(d.page.get_by_text("Orchestrator", exact=True).first, 2)
     d.hover_read(d.page.get_by_text("Investigator", exact=True).first, 2)

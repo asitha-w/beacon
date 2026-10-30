@@ -4,7 +4,6 @@ import { api } from '../api.js';
 import { go } from '../router.js';
 import { ago, money, tokens, duration, toast } from '../shell.js';
 import { azureForm, upcloudForm, connectionCard } from '../connections.js';
-import { labelChips } from './cells.js';
 
 export function pageApprovals() {
   const rows = sel.pendingApprovals().map((a) => el('tr', { class: 'row', onClick: () => go('inv/' + a.runId) }, [el('td', { class: 'mono', text: a.id }), el('td', { text: a.task }), el('td', null, [StatusChip({ status: 'awaiting-approval' })]), el('td', { class: 'mono', text: a.level }), el('td', { class: 'mono muted', text: ago(a.requestedAt) })]));
@@ -12,52 +11,6 @@ export function pageApprovals() {
   return el('div', { class: 'page' }, [el('h1', { class: 'display', text: 'Approvals' }), el('p', { class: 'muted', text: 'Every action waiting for a human. Only administrators can approve. Each row opens the investigation it came from.' }),
     rows.length ? el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Id' }), el('th', { text: 'Task' }), el('th', { text: 'Status' }), el('th', { text: 'Level' }), el('th', { text: 'Since' })])]), el('tbody', null, rows)])]) : el('div', { class: 'empty', text: 'Nothing waiting. Beacon has not proposed any action that needs you.' }),
     past.length ? el('div', null, [el('h2', { class: 'title', text: 'Decided' }), el('div', { style: 'height:8px' }), el('div', { class: 'tablewrap' }, [el('table', { class: 'table' }, [el('thead', null, [el('tr', null, [el('th', { text: 'Id' }), el('th', { text: 'Task' }), el('th', { text: 'Decision' }), el('th', { text: 'By' }), el('th', { text: 'When' })])]), el('tbody', null, past)])])]) : null]);
-}
-
-function parseSelector(text) {
-  const out = {};
-  text.split(',').map((p) => p.trim()).filter(Boolean).forEach((p) => { const i = p.indexOf('='); if (i > 0) out[p.slice(0, i).trim()] = p.slice(i + 1).trim(); });
-  return out;
-}
-function selectorText(sel) { return Object.keys(sel || {}).map((k) => k + '=' + sel[k]).join(', '); }
-
-// appCard shows an app, its selector, matched cells, and an inline editor.
-function appCard(a) {
-  const matched = sel.cellsOf(a);
-  const sv = el('input', { id: 'app-sel-' + a.id, value: selectorText(a.selector) });
-  const editor = el('div', { class: 'form hidden', style: 'margin-top:8px' }, [
-    el('div', { class: 'field' }, [el('label', { text: 'Selector (key=value, comma separated)' }), sv]),
-    el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Save', onClick: () => api.saveApp(Object.assign({}, a, { selector: parseSelector(sv.value) })).catch((e) => toast(e.message)) }), Button({ variant: 'danger', label: 'Delete app', onClick: () => api.deleteApp(a.id).catch((e) => toast(e.message)) })]),
-  ]);
-  return el('div', { class: 'card' }, [
-    el('div', { class: 'bc-row', style: 'justify-content:space-between' }, [el('span', { class: 'card-title', text: a.name }), SeverityChip({ severity: a.criticality === 'Critical' ? 'critical' : 'info', label: a.criticality })]),
-    el('div', { style: 'margin-top:6px' }, [labelChips(a.selector)]),
-    el('dl', { class: 'kv', style: 'margin-top:10px' }, [el('dt', { text: 'Cells' }), el('dd', { class: matched.length ? 'mono' : 'muted', text: matched.length ? matched.map((r) => r.id).join(', ') : 'none match yet' }), el('dt', { text: 'Owner' }), el('dd', { class: 'mono', text: a.owner }), el('dt', { text: 'SLO' }), el('dd', { text: a.slo || 'none yet' })]),
-    el('div', { class: 'bc-row', style: 'margin-top:10px' }, [Button({ label: 'Edit selector', onClick: () => editor.classList.toggle('hidden') })]),
-    editor,
-  ]);
-}
-
-function newAppForm() {
-  const name = el('input', { id: 'new-app-name', placeholder: 'Checkout' });
-  const selInput = el('input', { id: 'new-app-sel', placeholder: 'app=shop, tier=api' });
-  const crit = el('select', { id: 'new-app-crit' }, [el('option', { text: 'Standard' }), el('option', { text: 'Critical' })]);
-  const owner = el('input', { id: 'new-app-owner', placeholder: 'team@shop.example' });
-  const box = el('div', { class: 'card hidden' }, [el('div', { class: 'card-title', text: 'New app' }), el('div', { class: 'form', style: 'margin-top:8px' }, [
-    el('div', { class: 'field' }, [el('label', { for: 'new-app-name', text: 'Name' }), name]),
-    el('div', { class: 'field' }, [el('label', { for: 'new-app-sel', text: 'Selector (key=value, comma separated)' }), selInput, el('span', { class: 'sm muted', text: 'Cells whose labels match every pair belong to this app. New cells join automatically.' })]),
-    el('div', { class: 'field' }, [el('label', { for: 'new-app-crit', text: 'Criticality' }), crit]),
-    el('div', { class: 'field' }, [el('label', { for: 'new-app-owner', text: 'Owner' }), owner]),
-    el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Create app', onClick: () => api.saveApp({ name: name.value, selector: parseSelector(selInput.value), criticality: crit.value, owner: owner.value, slo: 'none yet' }).then(() => box.classList.add('hidden')).catch((e) => toast(e.message)) }), Button({ label: 'Cancel', onClick: () => box.classList.add('hidden') })]),
-  ])]);
-  return { box, toggle: () => box.classList.toggle('hidden') };
-}
-
-export function pageServices() {
-  const s = store.state; const form = newAppForm();
-  return el('div', { class: 'page' }, [el('div', { class: 'bc-row', style: 'justify-content:space-between' }, [el('div', null, [el('h1', { class: 'display', text: 'Apps' }), el('p', { class: 'muted', text: 'An app is a named label group: a real application, a gateway, or one machine on its own. Cells join by label; runbooks attach to the same labels.' })]), Button({ variant: 'primary', label: 'New app', onClick: form.toggle })]),
-    form.box,
-    el('div', { class: 'split' }, s.apps.map(appCard))]);
 }
 
 export function pageConnections() {

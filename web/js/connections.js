@@ -7,8 +7,8 @@ import { toast } from './shell.js';
 
 export function connChip(s) { return s === 'connected' ? StatusChip({ status: 'verified', label: 'Connected' }) : s === 'validating' ? StatusChip({ status: 'investigating', label: 'Validating' }) : StatusChip({ status: 'unverified', label: 'Not connected' }); }
 export function accessChip(a) { return a === 'write' ? el('span', { class: 'bc-pill bc-pill-missing', text: 'read + write' }) : a === 'read' ? el('span', { class: 'bc-pill bc-pill-available', text: 'read only' }) : el('span', { class: 'bc-pill bc-pill-none', text: 'no access' }); }
-export function tierChip(c) { return c.tier === 'agent' ? el('span', { class: 'bc-pill bc-pill-available', text: 'agent' }) : el('span', { class: 'bc-pill bc-pill-none', text: 'basic' }); }
-export function channelChip(c) { const m = { online: ['verified', 'Online'], connected: ['verified', 'Connected'], waiting: ['investigating', 'Waiting for agent'], offline: ['unverified', 'Offline'] }[c.channel] || ['unverified', c.channel]; return StatusChip({ status: m[0], label: m[1] }); }
+export function tierChip(c) { return c.tier === 'probe' ? el('span', { class: 'bc-pill bc-pill-available', text: 'probe' }) : el('span', { class: 'bc-pill bc-pill-none', text: 'basic' }); }
+export function channelChip(c) { const m = { online: ['verified', 'Online'], connected: ['verified', 'Connected'], waiting: ['investigating', 'Waiting for probe'], offline: ['unverified', 'Offline'] }[c.channel] || ['unverified', c.channel]; return StatusChip({ status: m[0], label: m[1] }); }
 
 function field(id, label, input, hint) { return el('div', { class: 'field' }, [el('label', { for: id, text: label }), input, hint ? el('span', { class: 'sm muted', text: hint }) : null]); }
 function select(id, options, value, onChange) { return el('select', { id, onChange }, options.map((o) => el('option', { value: o[0], text: o[1], selected: o[0] === value }))); }
