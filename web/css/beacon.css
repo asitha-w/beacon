@@ -329,3 +329,14 @@ details.details > * + * { margin-top:10px; }
 .layers marker path { fill:var(--line-strong); }
 .layers .arrow text { font-size:11px; fill:var(--muted-fg); }
 @media (max-width: 860px) { .docs { grid-template-columns:1fr; } .docs-nav { position:static; display:flex; flex-wrap:wrap; } }
+
+/* Setup hint on the rail */
+.nav a.hint { position:relative; color:var(--foreground); }
+.nav a.hint .ico { color:var(--brand); animation:beacon-pulse 1.6s ease-in-out infinite; }
+.nav a.hint::after { content:""; position:absolute; left:4px; top:50%; width:6px; height:6px; margin-top:-3px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 0 var(--brand-soft); animation:beacon-ring 1.6s ease-out infinite; }
+.nav a .tip { position:absolute; left:calc(100% + 10px); top:50%; transform:translateY(-50%); white-space:nowrap; font-size:12px; font-weight:500; line-height:16px; padding:6px 10px; border-radius:var(--radius-sm); background:var(--brand); color:var(--on-beam); box-shadow:var(--shadow-lg); z-index:5; }
+.nav a .tip::before { content:""; position:absolute; right:100%; top:50%; margin-top:-5px; border:5px solid transparent; border-right-color:var(--brand); }
+.doclink { color:var(--brand); text-decoration:underline; text-underline-offset:3px; }
+@keyframes beacon-pulse { 0%, 100% { opacity:1; } 50% { opacity:.45; } }
+@keyframes beacon-ring { 0% { box-shadow:0 0 0 0 var(--brand-soft); opacity:1; } 100% { box-shadow:0 0 0 8px rgba(0,0,0,0); opacity:0; } }
+@media (prefers-reduced-motion: reduce) { .nav a.hint .ico, .nav a.hint::after { animation:none; } }

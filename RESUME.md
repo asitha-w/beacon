@@ -31,6 +31,10 @@ Dark-first console in the shadcn look; polls are truth and webhooks are hints; p
 - Still to test on real infrastructure: listed at the end of `cell-access-model.md`.
 - The model is in the product: `web/docs/` (seven Markdown pages, the `::layers` graphic, section anchors) at `#docs`, linked from the tenant, connect and connections pages; the orchestrator has a `read_docs` tool and its prompt tells it to guide setup from those pages. Keep `web/docs/` in step with `docs/planning/cell-access-model.md`.
 
+## Flow change on 2026-10-31
+
+Sign in, create tenant, land on Findings. The console carries setup one step at a time: the rail item for the next step pulses with a tip and the Findings page shows the same step with a button and a doc link (no connection, onboard, install the probe). The old `#setup-connect` wizard page still exists but nothing routes to it; remove it once the recording no longer needs anything from it.
+
 ## Open items, in the order we discussed
 
 1. Live-mode run with an API key: the investigator and orchestrator prompts have never been exercised against the model.

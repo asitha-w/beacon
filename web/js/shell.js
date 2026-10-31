@@ -20,10 +20,11 @@ function themeToggle() {
 export function shell(contentNode, opts = {}) {
   const s = store.state; const r = route().split('/')[0];
   const pending = sel.pendingApprovals().length;
+  const step = sel.nextStep();
   const rail = el('nav', { class: 'rail', 'aria-label': 'Beacon' }, [
     el('div', { class: 'brand' }, [el('i', null, [icon('beacon')]), 'Beacon']),
     el('div', { class: 'tenant' }, [el('span', { text: s.tenant ? s.tenant.name : 'No tenant' }), el('span', { class: 'label', text: s.tenant ? s.tenant.env : '' })]),
-    el('div', { class: 'nav' }, NAV.map((n) => n[0] === 'sep' ? el('div', { class: 'sep', text: n[1] }) : el('a', { href: '#' + n[0], class: r === n[0] || (n[0] === 'investigations' && r === 'inv') ? 'active' : '' }, [icon(n[2]), n[1], n[0] === 'approvals' && pending ? el('span', { class: 'count', text: String(pending) }) : null]))),
+    el('div', { class: 'nav' }, NAV.map((n) => n[0] === 'sep' ? el('div', { class: 'sep', text: n[1] }) : el('a', { href: '#' + n[0], class: (r === n[0] || (n[0] === 'investigations' && r === 'inv') ? 'active' : '') + (step && step.nav === n[0] && r !== n[0] ? ' hint' : '') }, [icon(n[2]), n[1], n[0] === 'approvals' && pending ? el('span', { class: 'count', text: String(pending) }) : null, step && step.nav === n[0] && r !== n[0] ? el('span', { class: 'tip', role: 'status', text: step.tip }) : null]))),
     el('div', { class: 'me' }, [el('span', { class: 'avatar', text: (s.user ? s.user.name : 'U').slice(0, 1).toUpperCase() }), el('div', { class: 'who' }, [el('span', { text: s.user ? s.user.name : '' }), el('span', { class: 'sm', text: s.user ? s.user.email : '' })]), el('a', { href: '#', title: 'Sign out', onClick: (e) => { e.preventDefault(); api.logout(); } }, [icon('logout')])]),
   ]);
   const crumbs = (opts.crumb || '').split(' / ');

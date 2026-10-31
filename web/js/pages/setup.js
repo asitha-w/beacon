@@ -38,7 +38,7 @@ export function pageSetupTenant() {
   const name = el('input', { id: 'tenant-name', placeholder: 'Shop AS', value: 'Shop AS' });
   const env = el('select', { id: 'tenant-env' }, [el('option', { text: 'production' }), el('option', { text: 'staging' })]);
   const region = el('select', { id: 'tenant-region' }, [el('option', { text: 'EU, Finland (UpCloud fi-hel2)' }), el('option', { text: 'EU, Netherlands (Azure westeurope)' })]);
-  const form = el('form', { class: 'form', onSubmit: (e) => { e.preventDefault(); api.createTenant({ name: name.value, env: env.value, region: region.value }).then(() => go('setup-connect')).catch((x) => toast(x.message)); } }, [
+  const form = el('form', { class: 'form', onSubmit: (e) => { e.preventDefault(); api.createTenant({ name: name.value, env: env.value, region: region.value }).then(() => go('findings')).catch((x) => toast(x.message)); } }, [
     el('div', { class: 'field' }, [el('label', { for: 'tenant-name', text: 'Tenant name' }), name]),
     el('div', { class: 'field' }, [el('label', { for: 'tenant-env', text: 'First environment' }), env]),
     el('div', { class: 'field' }, [el('label', { for: 'tenant-region', text: 'Where the Beacon cell runs' }), region]),

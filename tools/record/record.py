@@ -116,10 +116,15 @@ def part1(d: Demo):
     d.click(d.button("Sign in"), pause=2)
     d.hover_read(d.page.get_by_text("The tenant gets its own runtime"), 2)
     d.click(d.button("Create tenant"), pause=2.5)
+    # the console points at the next step: a connection
+    d.hover_read(d.page.get_by_text("Start by creating a connection").first, 2.5)
+    d.click(d.button("Go to connections"), pause=2)
     # UpCloud first: sub-account, token, grants
+    d.click(d.button("Add UpCloud"), pause=1.5)
     d.hover_read(d.page.get_by_text("Restrict the sub-account to the servers"), 2)
     d.click(d.button("Validate token"), pause=3)
     # Azure: directory, identity, read scope, write scope
+    d.click(d.button("Add Azure"), pause=1.5)
     d.hover_read(d.page.get_by_text("Consent creates a service principal"), 2.2)
     d.scroll(380, 1.5)
     d.hover_read(d.page.get_by_text("Reader roles are assigned here"), 2.2)
@@ -131,11 +136,11 @@ def part1(d: Demo):
     d.hover_read(d.page.get_by_text("not supported yet").first, 2.2)
     d.click(d.button("Onboard selected as cells").first, pause=2.5)
     d.click(d.button("Onboard selected as cells").first, pause=2.5)
-    d.scroll(900, 2)
-    d.hover_read(d.page.get_by_text("Every cell starts at the basic tier"), 2.5)
-    d.click(d.page.get_by_role("button", name="I ran it on"), pause=2)
-    d.pause(8)
+    # the next step moves to cells: install the probe
     d.go("cells", 2.5)
+    d.hover_read(d.page.get_by_text("can take the probe").first, 2.5)
+    d.click(d.button("Install the probe"), pause=2)
+    d.pause(8)
     d.hover_read(d.page.get_by_text("one isolated channel per cell"), 3)
     d.hover_read(d.page.get_by_text("identity shared with").first, 2.5)
     d.hover_read(d.page.get_by_text("dedicated identity").first, 2.5)

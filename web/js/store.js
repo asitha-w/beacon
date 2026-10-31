@@ -66,6 +66,14 @@ export const sel = {
   conn: (id) => store.state.connections.find((c) => c.id === id),
   conns: (provider) => store.state.connections.filter((c) => c.provider === provider),
   connected: (provider) => store.state.connections.some((c) => c.provider === provider && c.status === 'connected'),
+  // nextStep is the one setup step the console points at, or null when the estate is set up.
+  nextStep: () => {
+    const s = store.state; if (!s || !s.tenant) return null;
+    if (!s.connections.some((c) => c.status === 'connected')) return { nav: 'connections', tip: 'Start by creating a connection', detail: 'A connection is an identity at a scope. It discovers what Beacon could manage; you choose what becomes a cell.', doc: '#docs/model' };
+    if (!s.cells.length) return { nav: 'connections', tip: 'Onboard what your connection discovered', detail: 'Each connection lists what it found. Pick what Beacon should manage; each becomes a cell at Level 0.', doc: '#docs/model/levels-of-reach' };
+    if (s.cells.some((c) => c.probeCapable && c.tier !== 'probe')) return { nav: 'cells', tip: 'Install the probe on your cells', detail: 'The grant raises a cell to Level 1: in-guest telemetry and hands on the host.', doc: '#docs/grant' };
+    return null;
+  },
   cell: (id) => store.state.cells.find((c) => c.id === id),
   cellsMatching: (selector) => store.state.cells.filter((c) => matchesSel(selector, c)),
   sharedWith: (cell) => store.state.cells.filter((c) => c.id !== cell.id && c.connectionId === cell.connectionId).length,
