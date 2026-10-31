@@ -29,6 +29,7 @@ Dark-first console in the shadcn look; polls are truth and webhooks are hints; p
 - VM hands: SSH direct from the tenant's static egress, reverse tunnel fallback, never a jump box; Ansible on top; per-tenant SSH CA with short-lived certificates; the "Beacon grant" is one line the operator runs. `docs/planning/hands-ssh.md`.
 - Twenty comparable products studied from their own docs: `docs/planning/competitor-access-models.md`.
 - Still to test on real infrastructure: listed at the end of `cell-access-model.md`.
+- The model is in the product: `web/docs/` (seven Markdown pages, the `::layers` graphic, section anchors) at `#docs`, linked from the tenant, connect and connections pages; the orchestrator has a `read_docs` tool and its prompt tells it to guide setup from those pages. Keep `web/docs/` in step with `docs/planning/cell-access-model.md`.
 
 ## Open items, in the order we discussed
 

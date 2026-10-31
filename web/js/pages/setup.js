@@ -24,6 +24,11 @@ export function pageLogin() {
   ])]);
 }
 
+// docLinks points at the documentation from the setup pages: the model, then the exact steps per provider.
+export function docLinks() {
+  return el('p', { class: 'sm muted doclinks' }, ['Before you connect: ', el('a', { href: '#docs/model', text: 'how levels and cells work' }), ' · ', el('a', { href: '#docs/azure', text: 'Azure, step by step' }), ' · ', el('a', { href: '#docs/upcloud', text: 'UpCloud, step by step' }), ' · ', el('a', { href: '#docs/howto', text: 'all how-tos' })]);
+}
+
 function stepsBar(n) {
   const names = ['Sign in', 'Create tenant', 'Connect clouds', 'Onboard cells', 'Install probes'];
   return el('div', { class: 'steps' }, names.map((s, i) => el('span', { class: i < n ? 'done' : (i === n ? '' : 'muted') }, [i < n ? '✓ ' : (i + 1) + '. ', i === n ? el('b', { text: s }) : s])));
@@ -38,6 +43,7 @@ export function pageSetupTenant() {
     el('div', { class: 'field' }, [el('label', { for: 'tenant-env', text: 'First environment' }), env]),
     el('div', { class: 'field' }, [el('label', { for: 'tenant-region', text: 'Where the Beacon cell runs' }), region]),
     el('p', { class: 'sm muted', text: 'The tenant gets its own runtime: isolated workers, its own credentials, one static egress address you can allowlist.' }),
+    el('p', { class: 'sm muted' }, ['New to Beacon? Read ', el('a', { href: '#docs/model', text: 'how Beacon reaches your infrastructure' }), ' first.']),
     Button({ variant: 'primary', label: 'Create tenant', type: 'submit' }),
   ]);
   return el('div', { class: 'page' }, [stepsBar(1), el('h1', { class: 'display', text: 'Create your tenant' }), el('div', { class: 'card lg' }, [form])]);
@@ -65,6 +71,7 @@ export function pageSetupConnect() {
   const done = cells.length > 0 && !pending.length;
   return el('div', { class: 'page' }, [stepsBar(step), el('h1', { class: 'display', text: 'Connect your clouds' }),
     el('p', { class: 'muted', text: 'A connection is an identity at a scope. It discovers what Beacon could manage; you choose what becomes a cell.' }),
+    docLinks(),
     el('div', { class: 'split' }, [azCard, ucCard]), agentCard,
     done ? el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Go to findings', onClick: () => go('findings') })]) : null]);
 }

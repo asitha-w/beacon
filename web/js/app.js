@@ -14,6 +14,7 @@ import { pageAgents } from './pages/agents.js';
 import { pageRunbooks } from './pages/runbooks.js';
 import { pageCells, pageCell } from './pages/cells.js';
 import { pageApprovals, pageConnections, pageResponders, pageConsumption } from './pages/admin.js';
+import { pageDocs } from './pages/docs.js';
 
 const PAGES = {
   findings: { page: pageFindings, crumb: 'Findings', aside: true },
@@ -40,7 +41,8 @@ function render() {
   else if (r === 'setup-connect') out = setupShell(pageSetupConnect());
   else {
     const parts = r.split('/');
-    if (parts[0] === 'inv') out = shell(pageInv(parts[1]), { crumb: 'Investigations / ' + parts[1], aside: true });
+    if (parts[0] === 'docs') { const d = pageDocs(parts[1] || 'model', parts[2]); out = store.state.tenant ? shell(d, { crumb: 'Documentation' }) : setupShell(d); }
+    else if (parts[0] === 'inv') out = shell(pageInv(parts[1]), { crumb: 'Investigations / ' + parts[1], aside: true });
     else if (parts[0] === 'cell') out = shell(pageCell(parts[1]), { crumb: 'Cells / ' + parts[1] });
     else { const p = PAGES[parts[0]] || PAGES.findings; out = shell(p.page(), { crumb: p.crumb, aside: !!p.aside }); }
   }

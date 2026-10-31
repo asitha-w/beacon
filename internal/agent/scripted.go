@@ -106,6 +106,10 @@ func (s *Scripted) Chat(ctx context.Context, req ChatRequest, onDelta func(strin
 	case req.Call != nil && resourceIn(q) != "":
 		out, _ := req.Call(ctx, "get_resource_state", map[string]any{"resource": resourceIn(q)})
 		answer = "From the provider and the probe: " + out
+	case req.Call != nil && docPageFor(q) != "":
+		page := docPageFor(q)
+		out, _ := req.Call(ctx, "read_docs", map[string]any{"page": page})
+		answer = "The steps are in the documentation, page " + page + " (#docs/" + page + "). " + docSummary(page, out)
 	case strings.Contains(q, "why") || strings.Contains(q, "cause"):
 		answer = "The cause is in the evidence table: every claim there has a source pointer, and the hypotheses section says which alternative was rejected and why."
 	case strings.Contains(q, "risk") || strings.Contains(q, "safe") || strings.Contains(q, "downtime"):
@@ -157,4 +161,41 @@ func healthCheck(run *domain.Run) []scenario.Step {
 		{Say: "Nothing is wrong on " + res + " from what I can read. If it still feels slow, name the service or the time window and I will look there."},
 		{Tool: "conclude", Input: map[string]any{"summary": res + " looks healthy: state started, metrics in band, no recent changes. No action proposed.", "cause_verified": false}},
 	}
+}
+
+// docPageFor routes a setup question to a documentation page, or "".
+func docPageFor(q string) string {
+	setup := strings.Contains(q, "how do i") || strings.Contains(q, "how to") || strings.Contains(q, "set up") || strings.Contains(q, "setup") || strings.Contains(q, "connect") || strings.Contains(q, "onboard") || strings.Contains(q, "grant") || strings.Contains(q, "install") || strings.Contains(q, "revoke") || strings.Contains(q, "level") || strings.Contains(q, "permission") || strings.Contains(q, "role")
+	if !setup {
+		return ""
+	}
+	switch {
+	case strings.Contains(q, "azure") || strings.Contains(q, "aks") || strings.Contains(q, "entra"):
+		return "azure"
+	case strings.Contains(q, "upcloud") || strings.Contains(q, "uks"):
+		return "upcloud"
+	case strings.Contains(q, "grant") || strings.Contains(q, "ssh") || strings.Contains(q, "port 22") || strings.Contains(q, "tunnel"):
+		return "grant"
+	case strings.Contains(q, "probe") || strings.Contains(q, "collector") || strings.Contains(q, "telemetry"):
+		return "probe"
+	case strings.Contains(q, "revoke") || strings.Contains(q, "secur") || strings.Contains(q, "credential"):
+		return "security"
+	case strings.Contains(q, "level") || strings.Contains(q, "cell") || strings.Contains(q, "connect"):
+		return "model"
+	}
+	return "howto"
+}
+
+// docSummary returns the page's headings so the scripted answer says what the page covers.
+func docSummary(page, md string) string {
+	var heads []string
+	for _, line := range strings.Split(md, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			heads = append(heads, strings.TrimPrefix(line, "## "))
+		}
+	}
+	if len(heads) == 0 {
+		return ""
+	}
+	return "It covers: " + strings.Join(heads, "; ") + "."
 }

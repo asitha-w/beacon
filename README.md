@@ -14,9 +14,10 @@ Agentic reliability operations for teams on Azure and UpCloud without a full-tim
 | `internal/signal` | Deterministic signal loop: ticks the world, evaluates responder rules, verifies fixes. |
 | `internal/agent` | Orchestrator, investigator reasoners (Claude and scripted), toolbox with the policy gate, remediator, usage accounting. |
 | `internal/api` | HTTP handlers and the server-sent event stream. |
-| `web/` | The console: vanilla ES modules on the Beacon design system, embedded into the binary. |
+| `web/` | The console: vanilla ES modules on the Beacon design system, embedded into the binary. `web/docs/` is the in-product documentation (the model, Azure and UpCloud step by step, the grant, the probe, security, how-to), served at `#docs` and read by the orchestrator through its `read_docs` tool. |
 | `prototype/`, `design-system/`, `traffic-map/` | The published artifacts the app grew from. See `ARTIFACTS.md`. |
 | `beacon-initial-prd.md` | PRD v0.1. |
+| `docs/planning/` | Design notes: the reviewed cell access model, the SSH hands design, the competitor study and the vendor research behind them. `web/docs/` is the customer-facing copy of that model. |
 
 ## Run it
 

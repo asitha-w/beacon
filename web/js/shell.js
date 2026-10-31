@@ -9,6 +9,8 @@ export const NAV = [
   ['findings', 'Findings', 'activity'], ['investigations', 'Investigations', 'search'], ['approvals', 'Approvals', 'shield'], ['chat', 'Ask Beacon', 'message'],
   ['sep', 'Configure'],
   ['cells', 'Cells', 'server'], ['connections', 'Connections', 'plug'], ['runbooks', 'Runbooks', 'book'], ['agents', 'Agents', 'bot'], ['responders', 'Responders', 'zap'], ['consumption', 'Consumption', 'gauge'],
+  ['sep', 'Help'],
+  ['docs', 'Documentation', 'layers'],
 ];
 function themeToggle() {
   const dark = (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'dark';

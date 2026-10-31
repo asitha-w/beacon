@@ -23,7 +23,7 @@ The Cells page shows the level per cell. These are levels of reach; the PRD's au
 One level more than a VM, and the last two in the other order.
 
 - **Level 0, connected.** The connection discovered the cluster. Node pools, cluster health, activity log, provider actions (scale a pool, upgrade, stop).
-- **Level 1, API access.** Beacon holds a kube context and the API server allows the egress IP. Live reads of workloads, events and pod logs, and all the hands: rollout undo, restart, scale, exec. AKS: a role assignment through the connection plus the authorized IP range. UKS: the API kubeconfig turned into a scoped service account plus the IP filter. No human on the cluster; the grant is a click.
+- **Level 1, API access.** Beacon holds a kube context and the API server allows the egress IP, or, for a private AKS cluster, a tunnel pod (plain OpenSSH client, outbound only) forwards the API server to the runtime; a jump VM with the grant is the fallback. Live reads of workloads, events and pod logs, and all the hands: rollout undo, restart, scale, exec. AKS: a role assignment through the connection plus the authorized IP range. UKS: the API kubeconfig turned into a scoped service account plus the IP filter. No human on the cluster; the grant is a click.
 - **Level 2, probe.** The collector DaemonSet and cluster collector, installed by Beacon through Level 1. Adds node and kubelet metrics, container logs with history, retained events.
 
 On a VM, telemetry and hands arrive together in the grant. On Kubernetes, hands come first and the probe is optional on top.

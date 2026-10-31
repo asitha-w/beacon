@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"sort"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/asitha-w/beacon/internal/domain"
 	"github.com/asitha-w/beacon/internal/store"
 	"github.com/asitha-w/beacon/internal/world"
+	"github.com/asitha-w/beacon/web"
 )
 
 // Orchestrator is the agent the operator talks to. It applies the responder
@@ -308,7 +310,9 @@ func (o *Orchestrator) CancelAll() {
 
 const orchestratorSystem = `You are Beacon's orchestrator for one customer tenant: the agent the operator talks to. You know the estate, the open findings and the runs, and you decide which specialist to start. You never change infrastructure yourself; the investigator proposes changes and policy gates them.
 
-Use tools to answer from current state rather than guessing. When the operator asks you to check, investigate or look into a resource, call start_investigation with a clear task. Answer in at most three short sentences, plainly, and say what you started and where to watch it. Never invent findings, resources or numbers.`
+Use tools to answer from current state rather than guessing. When the operator asks you to check, investigate or look into a resource, call start_investigation with a clear task. Answer in at most three short sentences, plainly, and say what you started and where to watch it. Never invent findings, resources or numbers.
+
+You also guide setup. Beacon's documentation is available through read_docs; its pages are: model (cells, levels of reach, autonomy, what never happens), azure (the connection, VM Level 0 and 1, AKS Level 0, 1 and 2, step by step), upcloud (the connection, server Level 0 and 1, UKS Level 0, 1 and 2), grant (what the one-line grant installs, SSH certificates, the reverse tunnel), probe (what it collects and sends, failure behaviour), security (what runs on the customer's side, network, identities, audit, revocation), howto (links into every section). When the operator asks how to connect, onboard, grant, install, reach a private cluster, open a port, revoke access, or what Beacon needs, read the matching page first and answer from it with the exact steps, roles and commands it gives; then point them to the page as #docs/<page>. Never guess a permission name; if the page does not state it, say so.`
 
 // Chat handles one operator message to the orchestrator.
 func (o *Orchestrator) Chat(ctx context.Context, question, by string) error {
@@ -397,7 +401,27 @@ func OrchestratorTools() []ToolDef {
 		{Name: "list_runs", Description: "List agent runs with agent, status, outcome and cost.", Schema: map[string]any{}},
 		{Name: "get_resource_state", Description: "Provider state, health and services with versions for a resource, plus its current key metrics.", Schema: map[string]any{"resource": res}, Required: []string{"resource"}},
 		{Name: "start_investigation", Description: "Start the investigator on a cell with a task. Returns the run id. Use when the operator asks to check, investigate or fix something.", Schema: map[string]any{"resource": res, "task": map[string]any{"type": "string", "description": "What to investigate, in one sentence"}}, Required: []string{"resource", "task"}},
+		{Name: "read_docs", Description: "Read one page of Beacon's documentation as Markdown. Pages: model, azure, upcloud, grant, probe, security, howto. Use before answering any question about setting up, connecting, granting, installing or revoking.", Schema: map[string]any{"page": map[string]any{"type": "string", "enum": DocPages()}}, Required: []string{"page"}},
 	}
+}
+
+// DocPages lists the documentation pages embedded with the console.
+func DocPages() []string {
+	return []string{"model", "azure", "upcloud", "grant", "probe", "security", "howto"}
+}
+
+// ReadDoc returns a documentation page, or an error naming the valid pages.
+func ReadDoc(page string) (string, error) {
+	for _, p := range DocPages() {
+		if p == page {
+			b, err := fs.ReadFile(web.FS, "docs/"+page+".md")
+			if err != nil {
+				return "", err
+			}
+			return string(b), nil
+		}
+	}
+	return "", fmt.Errorf("no documentation page %q; pages are %s", page, strings.Join(DocPages(), ", "))
 }
 
 func (o *Orchestrator) orchestratorTool(name string, in map[string]any, by string) (string, error) {
@@ -440,6 +464,8 @@ func (o *Orchestrator) orchestratorTool(name string, in map[string]any, by strin
 			st += " Now: " + strings.Join(m, ", ") + "."
 		}
 		return st, nil
+	case "read_docs":
+		return ReadDoc(str(in, "page"))
 	case "start_investigation":
 		id, err := o.StartInvestigation(str(in, "resource"), str(in, "task"), by)
 		if err != nil {
@@ -465,7 +491,7 @@ func (o *Orchestrator) contextText(s *domain.State) string {
 			open++
 		}
 	}
-	fmt.Fprintf(&b, "Open findings: %d. Pending approvals: %d.", open, pendingApprovals(s))
+	fmt.Fprintf(&b, "Open findings: %d. Pending approvals: %d. Documentation pages: %s (read_docs).", open, pendingApprovals(s), strings.Join(DocPages(), ", "))
 	return b.String()
 }
 

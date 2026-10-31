@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { go } from '../router.js';
 import { ago, money, tokens, duration, toast } from '../shell.js';
 import { azureForm, upcloudForm, connectionCard } from '../connections.js';
+import { docLinks } from './setup.js';
 
 export function pageApprovals() {
   const rows = sel.pendingApprovals().map((a) => el('tr', { class: 'row', onClick: () => go('inv/' + a.runId) }, [el('td', { class: 'mono', text: a.id }), el('td', { text: a.task }), el('td', null, [StatusChip({ status: 'awaiting-approval' })]), el('td', { class: 'mono', text: a.level }), el('td', { class: 'mono muted', text: ago(a.requestedAt) })]));
@@ -18,7 +19,7 @@ export function pageConnections() {
   const azBox = el('div', { class: 'card conn hidden' }, [el('div', { class: 'card-title', text: 'New Azure connection' }), azureForm({ onSubmit: () => azBox.classList.add('hidden'), onCancel: () => azBox.classList.add('hidden') })]);
   const ucBox = el('div', { class: 'card conn hidden' }, [el('div', { class: 'card-title', text: 'New UpCloud connection' }), upcloudForm({ onSubmit: () => ucBox.classList.add('hidden'), onCancel: () => ucBox.classList.add('hidden') })]);
   return el('div', { class: 'page' }, [el('div', { class: 'bc-row', style: 'justify-content:space-between' }, [el('div', null, [el('h1', { class: 'display', text: 'Connections' }), el('p', { class: 'muted', text: 'One identity at one scope. Broad read for discovery, narrow write for fixes. Each connection lists what it discovered; onboard from there.' })]), el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Add Azure', onClick: () => { azBox.classList.toggle('hidden'); ucBox.classList.add('hidden'); } }), Button({ variant: 'primary', label: 'Add UpCloud', onClick: () => { ucBox.classList.toggle('hidden'); azBox.classList.add('hidden'); } })])]),
-    azBox, ucBox,
+    docLinks(), azBox, ucBox,
     s.connections.length ? el('div', { class: 'grid2' }, s.connections.map((c) => connectionCard(c, { removable: true }))) : el('div', { class: 'empty', text: 'No connections yet.' })]);
 }
 

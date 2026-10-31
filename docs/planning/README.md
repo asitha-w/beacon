@@ -11,3 +11,5 @@ Working notes that shape Beacon before code is written. Each file is one topic. 
 | `hands-ssh.md` | Settled: how Beacon acts on a VM. SSH from the static egress, reverse tunnel fallback, Ansible on top, per-tenant SSH CA. |
 | `competitor-access-models.md` | Twenty operations agents compared on what they install, what identity they need, how they act and what they publish; what Beacon takes from it. |
 | `research/` | The five vendor-documentation reports behind the comparison, and the independent review of the access model, with every source URL. |
+
+The customer-facing copy of the access model is `web/docs/` in the console (Documentation page, `#docs`). When `cell-access-model.md` changes, change `web/docs/azure.md` and `web/docs/upcloud.md` with it.

@@ -294,3 +294,38 @@ details.details > * + * { margin-top:10px; }
 .switch.tel { display:flex; align-items:flex-start; gap:10px; color:var(--foreground); padding:6px 0; border-bottom:1px solid var(--border); }
 .switch.tel:last-child { border-bottom:0; }
 .switch.tel input { margin-top:2px; }
+
+/* Documentation */
+.docs { display:grid; grid-template-columns:220px 1fr; gap:var(--space-5); align-items:start; }
+.docs-nav { display:grid; gap:2px; position:sticky; top:0; }
+.docs-nav a { display:block; padding:8px 10px; border-radius:var(--radius-sm); color:var(--muted-fg); text-decoration:none; font-size:13px; line-height:18px; }
+.docs-nav a:hover { background:var(--accent); color:var(--foreground); }
+.docs-nav a.active { background:var(--muted); color:var(--foreground); font-weight:500; }
+.docs-body { max-width:760px; min-width:0; }
+.md.md-docs { font-size:14px; line-height:22px; gap:10px; }
+.md.md-docs h2 { font-size:24px; line-height:32px; font-weight:600; letter-spacing:-.025em; margin-bottom:4px; }
+.md.md-docs h3 { font-size:17px; line-height:24px; font-weight:600; letter-spacing:-.01em; margin-top:18px; padding-top:18px; border-top:1px solid var(--border); scroll-margin-top:12px; }
+.md.md-docs h4 { font-size:13px; font-weight:600; color:var(--foreground); margin-top:8px; text-transform:none; letter-spacing:0; scroll-margin-top:12px; }
+.md.md-docs p { color:var(--foreground); }
+.md.md-docs a { color:var(--brand); text-decoration:underline; text-underline-offset:3px; }
+.md.md-docs pre.code { margin:2px 0; }
+.md.md-docs .tablewrap { margin:4px 0; }
+.md.md-docs .tablewrap .table { min-width:0; }
+.md.md-docs .table td { vertical-align:top; }
+.md.md-docs ol, .md.md-docs ul { gap:4px; }
+.doclinks a { color:var(--brand); text-decoration:underline; text-underline-offset:3px; }
+.layers-wrap { margin:6px 0; }
+.layers { width:100%; max-width:720px; height:auto; display:block; font-family:var(--font-sans); }
+.layers .band rect { fill:var(--card); stroke:var(--border); }
+.layers .band.runtime rect { fill:var(--brand-soft); stroke:var(--brand); }
+.layers .band.cell rect { fill:var(--muted); }
+.layers .band-title { font-size:14px; font-weight:600; fill:var(--foreground); }
+.layers .band-sub { font-size:12px; fill:var(--muted-fg); }
+.layers .pill rect { fill:var(--muted); stroke:var(--border); }
+.layers .pill.l1 rect, .layers .pill.l2 rect { fill:var(--ok-soft); stroke:var(--ok); }
+.layers .pill text { font-size:11px; font-weight:500; fill:var(--foreground); }
+.layers .arrow line { stroke:var(--line-strong); stroke-width:1.5; }
+.layers .arrow.up line { stroke:var(--brand); }
+.layers marker path { fill:var(--line-strong); }
+.layers .arrow text { font-size:11px; fill:var(--muted-fg); }
+@media (max-width: 860px) { .docs { grid-template-columns:1fr; } .docs-nav { position:static; display:flex; flex-wrap:wrap; } }
