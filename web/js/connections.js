@@ -50,10 +50,7 @@ export function azureForm(opts = {}) {
   const credHint = el('span', { class: 'sm muted' });
   const cred = select('az-cred', [['federated', 'Federated credential (no secret, recommended)'], ['certificate', 'Certificate'], ['secret', 'Client secret (fallback)']], 'federated', () => refresh());
   const byoBox = el('div', { class: 'form hidden', style: 'max-width:none' }, [field('az-client', 'Application (client) id', clientId), field('az-cred', 'Credential', cred), credHint, el('div', { class: 'field hidden', id: 'az-secret-box' }, [el('label', { for: 'az-secret', text: 'Client secret' }), secret])]);
-  let consented = false; let objectId = '';
-  const consentStatus = el('span', { class: 'sm muted', text: 'Not consented yet. A tenant administrator must sign in.' });
-  const consentBtn = Button({ label: 'Grant admin consent', onClick: () => { consented = true; objectId = '6f1e2d3c-' + dir.value.slice(0, 8) + '-beacon'; consentStatus.textContent = 'Consented. Service principal created in your directory · object id ' + objectId; toast('Consent granted (simulated)'); refresh(); } });
-  const consentBox = el('div', { class: 'form', style: 'max-width:none' }, [el('div', { class: 'bc-row' }, [consentBtn, consentStatus])]);
+  const consentBox = el('p', { class: 'sm muted', text: 'A tenant administrator grants consent by opening the link in step 1 below. Beacon finds the resulting service principal when you test the connection.' });
   const auth = select('az-auth', [['consent', 'Consent to the Beacon app (recommended)'], ['byo', 'Bring your own app registration']], 'consent', () => refresh());
   const readLevel = select('az-rl', [['resource-group', 'Resource group'], ['subscription', 'Whole subscription']], 'resource-group', () => refresh());
   const readTarget = el('input', { id: 'az-rt', value: 'rg-shop-prod', placeholder: 'resource group name', onInput: () => refresh() });
@@ -61,8 +58,8 @@ export function azureForm(opts = {}) {
   const writeTarget = el('input', { id: 'az-wt', value: 'rg-shop-prod', placeholder: 'resource group or resource id', onInput: () => refresh() });
   const name = el('input', { id: 'az-name', placeholder: 'Shop production (optional)' });
   const stepsBox = el('div');
-  function scopePath(level, target) { const base = '/subscriptions/' + (sub.value.trim() || '<subscription>'); if (level === 'subscription') return base; if (level === 'resource') return target || base; return base + '/resourceGroups/' + (target || '<rg>'); }
-  function assign(role, scope, oid) { return `az role assignment create --assignee-object-id ${oid} --assignee-principal-type ServicePrincipal \\\n  --role "${role}" --scope ${scope}`; }
+  function scopeVar(level, target) { if (level === 'subscription') return '/subscriptions/$SUB'; if (level === 'resource') return target || '/subscriptions/$SUB'; return '/subscriptions/$SUB/resourceGroups/' + (target || '<rg>'); }
+  function assign(role, scopeName) { return `az role assignment create --assignee-object-id "$OID" --assignee-principal-type ServicePrincipal --role "${role}" --scope "$${scopeName}"`; }
   function refresh() {
     const byo = auth.value === 'byo';
     byoBox.classList.toggle('hidden', !byo); consentBox.classList.toggle('hidden', byo);
@@ -70,20 +67,21 @@ export function azureForm(opts = {}) {
     credHint.textContent = cred.value === 'federated' ? `Add a federated credential on your app: issuer https://${runtimeHost()}/oidc, subject tenant:${store.state.tenant ? store.state.tenant.id : '<tenant>'}, audience api://AzureADTokenExchange. No secret is stored anywhere.` : cred.value === 'certificate' ? 'Beacon generates a key pair in the tenant secret store and shows you the public certificate to upload to the app registration.' : 'Stored in the tenant secret store. Rotate it before it expires; federation avoids this.';
     readTarget.parentElement.classList.toggle('hidden', readLevel.value === 'subscription');
     writeTarget.parentElement.classList.toggle('hidden', writeLevel.value === 'none');
-    const oid = byo ? '<object id of your app\'s service principal>' : (objectId || '<object id shown after consent>');
-    const rs = scopePath(readLevel.value, readTarget.value.trim()); const ws = scopePath(writeLevel.value, writeTarget.value.trim()); const subId = sub.value.trim() || '<subscription>';
+    const subId = sub.value.trim() || '<subscription>'; const dirId = dir.value.trim() || '<directory>';
+    const appId = byo ? (clientId.value.trim() || '<client id>') : BEACON_APP_ID;
+    const vars = `SUB=${subId}\nOID=$(az ad sp show --id ${appId} --query id -o tsv)   # the service principal in your directory\nREAD_SCOPE=${scopeVar(readLevel.value, readTarget.value.trim())}` + (writeLevel.value !== 'none' ? `\nWRITE_SCOPE=${scopeVar(writeLevel.value, writeTarget.value.trim())}` : '');
     const items = [
-      byo ? { title: 'Register the identity', text: `Your app registration ${clientId.value.trim() || '<client id>'} in directory ${dir.value.trim() || '<directory>'} with a ${cred.value} credential. Find its service principal object id:`, code: `az ad sp show --id ${clientId.value.trim() || '<client id>'} --query id -o tsv` }
-        : { title: 'Grant admin consent', text: 'A tenant administrator opens this link and accepts. It creates the Beacon service principal in your directory; no secret changes hands.', code: `https://login.microsoftonline.com/${dir.value.trim() || '<directory>'}/adminconsent?client_id=${BEACON_APP_ID}` },
-      { title: 'Assign the read roles (Level 0 and cluster reads)', text: 'Reader covers discovery, platform metrics, the Activity Log and Resource Health. The two AKS roles and the custom reader role give Kubernetes reads on clusters in scope.', code: [assign('Reader', rs, oid), assign('Azure Kubernetes Service RBAC Reader', rs, oid), assign('Azure Kubernetes Service Cluster User Role', rs, oid), `az role definition create --role-definition beacon-aks-reader.json`, assign('Beacon AKS reader', rs, oid)].join('\n'), download: { name: 'beacon-aks-reader.json', body: aksReaderRole(subId) } },
-      writeLevel.value !== 'none' ? { title: 'Create and assign the write roles (optional, for actions)', text: 'Three custom roles with only the actions the catalogue uses. Assign them at the write scope; the namespace writer goes on each permitted namespace.', code: [`az role definition create --role-definition beacon-vm-operator.json`, `az role definition create --role-definition beacon-aks-operator.json`, `az role definition create --role-definition beacon-aks-namespace-writer.json`, assign('Beacon VM operator', ws, oid), assign('Beacon AKS operator', ws, oid), assign('Beacon AKS namespace writer', ws + '/providers/Microsoft.ContainerService/managedClusters/<cluster>/namespaces/<namespace>', oid)].join('\n'), download: { name: 'beacon-roles.json', body: '[' + [vmOperatorRole(subId), aksOperatorRole(subId), aksWriterRole(subId)].join(',\n') + ']' } } : { title: 'No write roles', text: 'Read only: Beacon recommends and never acts on Azure through this connection. Add a write scope later to enable actions.' },
-      { title: 'Validate', text: 'Beacon lists the role assignments it finds, derives its capabilities, fills the catalogue, and refuses to connect if the read identity carries write actions.' },
+      byo ? { title: 'Your app registration', text: `Application ${appId} in directory ${dirId}, with a ${cred.value} credential. Its service principal must exist in the directory.` }
+        : { title: 'Grant admin consent', text: 'A tenant administrator opens this link, reads what the Beacon app asks for, and accepts. That creates the Beacon service principal in your directory. No secret changes hands and no resource access is granted by this step.', code: `https://login.microsoftonline.com/${dirId}/adminconsent?client_id=${BEACON_APP_ID}` },
+      { title: 'Set the variables once', text: 'In a shell signed in with az login as Owner, User Access Administrator or Role Based Access Control Administrator at the scope.', code: vars },
+      { title: 'Assign the read roles', text: 'Reader covers discovery, platform metrics, the Activity Log and Resource Health. The two AKS roles and the custom reader role give Kubernetes reads on clusters in scope.', code: [`az role definition create --role-definition @beacon-aks-reader.json`, assign('Reader', 'READ_SCOPE'), assign('Azure Kubernetes Service RBAC Reader', 'READ_SCOPE'), assign('Azure Kubernetes Service Cluster User Role', 'READ_SCOPE'), assign('Beacon AKS reader', 'READ_SCOPE')].join('\n'), download: { name: 'beacon-aks-reader.json', body: aksReaderRole(subId) } },
+      writeLevel.value !== 'none' ? { title: 'Create and assign the write roles', text: 'Three custom roles with only the actions the catalogue uses, assigned at the write scope. The namespace writer goes on each permitted namespace of each cluster.', code: [`az role definition create --role-definition @beacon-vm-operator.json`, `az role definition create --role-definition @beacon-aks-operator.json`, `az role definition create --role-definition @beacon-aks-namespace-writer.json`, assign('Beacon VM operator', 'WRITE_SCOPE'), assign('Beacon AKS operator', 'WRITE_SCOPE'), assign('Beacon AKS namespace writer', 'WRITE_SCOPE/providers/Microsoft.ContainerService/managedClusters/<cluster>/namespaces/<namespace>')].join('\n'), download: { name: 'beacon-roles.json', body: '[' + [vmOperatorRole(subId), aksOperatorRole(subId), aksWriterRole(subId)].join(',\n') + ']' } } : { title: 'No write roles', text: 'Read only: Beacon recommends and never acts on Azure through this connection. Add a write scope later to enable actions.' },
+      { title: 'Test and save the connection', text: 'Beacon signs in, finds the service principal, lists the role assignments it holds, derives its capabilities, fills the catalogue, and refuses to save if the read identity carries write actions.' },
     ];
     stepsBox.replaceChildren(steps(items, 'Manual steps for this connection'));
   }
   const submit = () => {
-    if (auth.value === 'consent' && !consented) return toast('Grant admin consent first');
-    api.createConnection({ provider: 'azure', name: name.value, directory: dir.value.trim(), subscriptionId: sub.value.trim(), authMode: auth.value, clientId: clientId.value.trim(), objectId, credentialKind: auth.value === 'byo' ? cred.value : 'federated',
+    api.createConnection({ provider: 'azure', name: name.value, directory: dir.value.trim(), subscriptionId: sub.value.trim(), authMode: auth.value, clientId: clientId.value.trim(), credentialKind: auth.value === 'byo' ? cred.value : 'federated',
       readScope: { level: readLevel.value, target: readLevel.value === 'subscription' ? sub.value.trim() : readTarget.value.trim() }, writeScope: { level: writeLevel.value, target: writeLevel.value === 'none' ? '' : (writeLevel.value === 'subscription' ? sub.value.trim() : writeTarget.value.trim()) } })
       .then(() => opts.onSubmit && opts.onSubmit()).catch((e) => toast(e.message));
   };
@@ -95,9 +93,9 @@ export function azureForm(opts = {}) {
       el('div', { class: 'form' }, [el('span', { class: 'label', text: 'Read scope' }), field('az-rl', 'Level', readLevel), field('az-rt', 'Resource group', readTarget, 'Reader and the AKS read roles are assigned here. What Beacon can see.')]),
       el('div', { class: 'form' }, [el('span', { class: 'label', text: 'Write scope' }), field('az-wl', 'Level', writeLevel), field('az-wt', 'Target', writeTarget, 'The custom operator roles are assigned here. What Beacon can change; keep it narrow.')]),
     ]),
-    field('az-name', 'Connection name', name),
     stepsBox,
-    el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Validate', onClick: submit }), opts.onCancel ? Button({ label: 'Cancel', onClick: opts.onCancel }) : null, el('a', { class: 'doclink sm', href: '#docs/azure/the-connection', text: 'Read the Azure page' })]),
+    field('az-name', 'Connection name', name),
+    el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Test and save connection', onClick: submit }), opts.onCancel ? Button({ label: 'Cancel', onClick: opts.onCancel }) : null, el('a', { class: 'doclink sm', href: '#docs/azure/the-connection', text: 'Read the Azure page' })]),
   ]);
   requestAnimationFrame(refresh);
   return form;
@@ -126,7 +124,7 @@ export function upcloudForm(opts = {}) {
       { title: 'Create a sub-account', text: 'In the control panel under People, add a sub-account for Beacon. It starts with no access to existing resources.' },
       { title: 'Create an API token for it', text: `Tokens live at most 365 days; this one expires ${exp}. Pin it to the tenant egress address so it is useless elsewhere.`, code: `curl -s -X POST https://api.upcloud.com/1.3/account/tokens -u "${sub.value.trim() || '<sub-account>'}:<password>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"name":"beacon","expires_at":"${exp}T00:00:00Z","allowed_ip_ranges":["${egress()}/32"]}'` },
       { title: 'Grant permissions from the main account', text: 'Only the main account can grant. A permission allows every operation on its target, read and write alike; the Beacon policy gate is the only split.', code: grants },
-      { title: 'Validate', text: 'Beacon lists what the token can reach and fills the catalogue. It tracks the expiry and takes the connection offline with a finding before the token lapses.' },
+      { title: 'Test and save the connection', text: 'Beacon lists what the token can reach and fills the catalogue. It tracks the expiry and takes the connection offline with a finding before the token lapses.' },
     ], 'Manual steps for this connection'));
   }
   const submit = () => api.createConnection({ provider: 'upcloud', name: name.value, subAccount: sub.value.trim(), token: tok.value, tokenDays: parseInt(days.value, 10) || 365, permissions: perms.map((p) => ({ targetType: p.targetType, targetIdentifier: p.targetIdentifier || '*' })) })
@@ -136,9 +134,9 @@ export function upcloudForm(opts = {}) {
     el('div', { class: 'split' }, [field('uc-sub', 'Sub-account', sub), field('uc-days', 'Token validity, days', days, 'UpCloud API tokens live at most a year.')]),
     field('uc-token', 'API token', tok, 'Stored in the tenant secret store, pinned to the egress address ' + egress() + '.'),
     el('div', { class: 'field' }, [el('label', { text: 'Permissions granted by the main account' }), permBox, el('span', { class: 'sm muted', text: 'Per resource, no read and write split. server and managed_kubernetes with * cover everything Beacon can manage.' })]),
-    field('uc-name', 'Connection name', name),
     stepsBox,
-    el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Validate', onClick: submit }), opts.onCancel ? Button({ label: 'Cancel', onClick: opts.onCancel }) : null, el('a', { class: 'doclink sm', href: '#docs/upcloud/the-connection', text: 'Read the UpCloud page' })]),
+    field('uc-name', 'Connection name', name),
+    el('div', { class: 'bc-row' }, [Button({ variant: 'primary', label: 'Test and save connection', onClick: submit }), opts.onCancel ? Button({ label: 'Cancel', onClick: opts.onCancel }) : null, el('a', { class: 'doclink sm', href: '#docs/upcloud/the-connection', text: 'Read the UpCloud page' })]),
   ]);
 }
 
