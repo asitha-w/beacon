@@ -82,6 +82,7 @@ h1, h2, h3, h4, p { margin:0; }
 .bc-pill-available { color:var(--ok); background:var(--ok-soft); }
 .bc-pill-missing { color:var(--warning); background:var(--warning-soft); }
 .bc-pill-none { color:var(--muted-fg); background:var(--muted); border-color:var(--border); }
+.bc-pill-note { color:var(--info); background:var(--info-soft); }
 .badge { color:var(--muted-fg); background:var(--muted); border-color:var(--border); font-family:var(--font-mono); font-size:11px; }
 
 /* stat row, evidence table, chain, approval, capabilities */
@@ -340,3 +341,17 @@ details.details > * + * { margin-top:10px; }
 @keyframes beacon-pulse { 0%, 100% { opacity:1; } 50% { opacity:.45; } }
 @keyframes beacon-ring { 0% { box-shadow:0 0 0 0 var(--brand-soft); opacity:1; } 100% { box-shadow:0 0 0 8px rgba(0,0,0,0); opacity:0; } }
 @media (prefers-reduced-motion: reduce) { .nav a.hint .ico, .nav a.hint::after { animation:none; } }
+
+/* Manual steps, code with copy, the ladder of reach */
+.codewrap { position:relative; }
+.codewrap .copy { position:absolute; top:6px; right:6px; font:500 11px/16px var(--font-sans); padding:2px 8px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--card); color:var(--muted-fg); cursor:pointer; }
+.codewrap .copy:hover { color:var(--foreground); background:var(--accent); }
+.steps-list { margin:8px 0 0; padding-left:22px; display:grid; gap:12px; }
+.steps-list li { display:grid; gap:4px; }
+.steps-list li::marker { color:var(--brand); font-weight:600; }
+.ladder { display:grid; gap:8px; margin:4px 0 8px; }
+.rung { display:grid; grid-template-columns:84px 1fr; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--card); }
+.rung.done { opacity:.75; }
+.rung.current { border-color:var(--brand); background:var(--brand-soft); }
+.rung.next { border-style:dashed; }
+.rung-level { padding-top:2px; }

@@ -52,7 +52,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/cells/{id}/labels", s.setLabels)
 	mux.HandleFunc("POST /api/runbooks", s.saveRunbook)
 	mux.HandleFunc("DELETE /api/runbooks/{id}", s.deleteRunbook)
-	mux.HandleFunc("POST /api/probe/install", s.installProbe)
+	mux.HandleFunc("POST /api/probe/install", s.raiseAll)
+	mux.HandleFunc("POST /api/cells/{id}/grant", s.grant)
+	mux.HandleFunc("POST /api/cells/{id}/api-access", s.apiAccess)
+	mux.HandleFunc("POST /api/cells/{id}/probe", s.cellProbe)
 	mux.HandleFunc("POST /api/approvals/{id}", s.decide)
 	mux.HandleFunc("POST /api/chat", s.chat)
 	mux.HandleFunc("POST /api/runs/{id}/ask", s.ask)
@@ -180,10 +183,11 @@ func (s *Server) tenant(w http.ResponseWriter, r *http.Request) {
 // createConnection records a connection and validates it in the background.
 func (s *Server) createConnection(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Provider, Name, Directory, AuthMode, ClientID, CredentialKind string
-		ReadScope, WriteScope                                         domain.Scope
-		SubAccount, Token                                             string
-		Grants                                                        []string
+		Provider, Name, Directory, SubscriptionID, AuthMode, ClientID, ObjectID, CredentialKind string
+		ReadScope, WriteScope                                                                   domain.Scope
+		SubAccount, Token                                                                       string
+		TokenDays                                                                               int
+		Permissions                                                                             []domain.Permission
 	}
 	if err := readJSON(r, &in); err != nil {
 		writeErr(w, 400, err)
@@ -193,19 +197,59 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("provider must be azure or upcloud"))
 		return
 	}
-	if in.Provider == "azure" && in.Directory == "" {
-		writeErr(w, 400, errors.New("the Entra directory (tenant id) is required"))
-		return
+	if in.Provider == "azure" {
+		switch {
+		case in.Directory == "":
+			writeErr(w, 400, errors.New("the Entra directory (tenant id) is required"))
+			return
+		case in.SubscriptionID == "":
+			writeErr(w, 400, errors.New("the subscription id is required: role assignments live in a subscription"))
+			return
+		case in.AuthMode == "byo" && in.ClientID == "":
+			writeErr(w, 400, errors.New("bring your own app needs the application (client) id"))
+			return
+		case in.AuthMode == "byo" && in.CredentialKind != "federated" && in.CredentialKind != "certificate" && in.CredentialKind != "secret":
+			writeErr(w, 400, errors.New("credential must be federated, certificate or secret"))
+			return
+		case in.ReadScope.Level == "":
+			writeErr(w, 400, errors.New("a read scope is required"))
+			return
+		case in.ReadScope.Level != domain.ScopeSubscription && in.ReadScope.Target == "":
+			writeErr(w, 400, errors.New("name the resource group for the read scope"))
+			return
+		}
+		if in.ReadScope.Level == domain.ScopeSubscription {
+			in.ReadScope.Target = in.SubscriptionID
+		}
+		if in.WriteScope.Level == domain.ScopeSubscription {
+			in.WriteScope.Target = in.SubscriptionID
+		}
 	}
-	if in.Provider == "azure" && in.ReadScope.Target == "" {
-		writeErr(w, 400, errors.New("a read scope is required"))
-		return
+	if in.Provider == "upcloud" {
+		switch {
+		case in.SubAccount == "":
+			writeErr(w, 400, errors.New("the sub-account username is required"))
+			return
+		case in.Token == "":
+			writeErr(w, 400, errors.New("the API token is required"))
+			return
+		case in.TokenDays < 1 || in.TokenDays > 365:
+			writeErr(w, 400, errors.New("UpCloud API tokens live between 1 and 365 days"))
+			return
+		case len(in.Permissions) == 0:
+			writeErr(w, 400, errors.New("grant at least one permission from the main account"))
+			return
+		}
 	}
 	var c *domain.Connection
 	s.st.Update(func(st *domain.State) []store.Event {
 		c = &domain.Connection{ID: s.st.NextID("conn", 0), Provider: in.Provider, Name: in.Name, Status: domain.ConnValidating,
-			Directory: in.Directory, AuthMode: in.AuthMode, ClientID: in.ClientID, CredentialKind: in.CredentialKind, ReadScope: in.ReadScope, WriteScope: in.WriteScope,
-			SubAccount: in.SubAccount, Grants: in.Grants}
+			Directory: in.Directory, SubscriptionID: in.SubscriptionID, AuthMode: in.AuthMode, ClientID: in.ClientID, ObjectID: in.ObjectID, CredentialKind: in.CredentialKind, ReadScope: in.ReadScope, WriteScope: in.WriteScope,
+			SubAccount: in.SubAccount, Permissions: in.Permissions}
+		if in.Provider == "upcloud" {
+			exp := time.Now().Add(time.Duration(in.TokenDays) * 24 * time.Hour)
+			c.TokenExpiresAt = &exp
+		}
 		if c.Name == "" {
 			if in.Provider == "azure" {
 				c.Name = "Azure · " + c.ReadScope.Level + " " + c.ReadScope.Target
@@ -218,6 +262,9 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request) {
 		}
 		if c.CredentialKind == "" {
 			c.CredentialKind = "federated"
+		}
+		if c.AuthMode == "consent" {
+			c.CredentialKind = "Beacon app, federated"
 		}
 		if c.WriteScope.Level == "" {
 			c.WriteScope.Level = domain.ScopeNone
@@ -284,17 +331,29 @@ func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-// syncProbe recomputes which cells the agent is expected on.
+// syncProbe recomputes which cells can carry the probe and which have it.
 func syncProbe(st *domain.State) {
-	st.Probe.Expected = st.Probe.Expected[:0]
+	st.Probe.Expected = []string{}
+	st.Probe.Hosts = []string{}
+	waiting := false
 	for _, c := range st.Cells {
 		if c.ProbeCapable {
 			st.Probe.Expected = append(st.Probe.Expected, c.ID)
 		}
+		if c.HasProbe() {
+			st.Probe.Hosts = append(st.Probe.Hosts, c.ID)
+		}
+		if c.Channel == domain.ChannelWaiting {
+			waiting = true
+		}
 	}
-	if len(st.Probe.Expected) == 0 {
+	switch {
+	case waiting:
+		st.Probe.Status = domain.ProbeWaiting
+	case len(st.Probe.Hosts) > 0:
+		st.Probe.Status = domain.ProbeOnline
+	default:
 		st.Probe.Status = domain.ProbeNone
-		st.Probe.Hosts = st.Probe.Hosts[:0]
 	}
 }
 
@@ -327,7 +386,7 @@ func (s *Server) onboard(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}
 		syncProbe(st)
-		return []store.Event{{Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "run", fmt.Sprintf("%s onboarded %s as cells through %s. Basic tier: provider metrics and actions.", by, strings.Join(added, ", "), c.Name), "", false), store.Toast(fmt.Sprintf("%d cell(s) onboarded", len(added)))}
+		return []store.Event{{Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "run", fmt.Sprintf("%s onboarded %s as cells through %s. Level 0: provider sensors and provider actions.", by, strings.Join(added, ", "), c.Name), "", false), store.Toast(fmt.Sprintf("%d cell(s) onboarded", len(added)))}
 	})
 	if errOut != nil {
 		writeErr(w, 409, errOut)
@@ -471,60 +530,219 @@ func (s *Server) setLabels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-func (s *Server) installProbe(w http.ResponseWriter, _ *http.Request) {
-	var ready bool
-	s.st.Update(func(st *domain.State) []store.Event {
-		syncProbe(st)
-		if len(st.Probe.Expected) == 0 {
-			return nil
-		}
-		ready = true
-		st.Probe.Status = domain.ProbeWaiting
-		for _, c := range st.Cells {
-			if c.ProbeCapable && c.Tier != domain.TierProbe {
-				c.Channel = domain.ChannelWaiting
-			}
-		}
-		return []store.Event{{Type: "probe", Data: st.Probe}, {Type: "cells", Data: st.Cells}}
-	})
-	if !ready {
-		writeErr(w, 409, errors.New("onboard at least one probe-capable cell first"))
+// grant issues the Beacon grant for a VM cell and, in this simulation, lets it
+// report back a moment later: host key pinned, probe online, Level 1.
+func (s *Server) grant(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Tunnel bool }
+	_ = readJSON(r, &in)
+	id := r.PathValue("id")
+	if err := s.grantCell(id, in.Tunnel, s.userName()); err != nil {
+		writeErr(w, 409, err)
 		return
 	}
+	writeJSON(w, 202, map[string]any{"ok": true})
+}
+
+func (s *Server) grantCell(id string, tunnel bool, by string) error {
+	var err error
+	s.st.Update(func(st *domain.State) []store.Event {
+		c := st.Cell(id)
+		switch {
+		case c == nil:
+			err = errors.New("no such cell")
+		case c.IsCluster():
+			err = errors.New("a cluster takes API access, not the grant")
+		case c.Level >= domain.LevelGranted:
+			err = errors.New(id + " already has the grant")
+		case c.Channel == domain.ChannelWaiting:
+			err = errors.New(id + " is waiting for its grant to report back")
+		}
+		if err != nil {
+			return nil
+		}
+		c.Grant = &domain.Grant{Token: fmt.Sprintf("bgt_%06x%06x", rand.Intn(0xffffff), rand.Intn(0xffffff)), IssuedAt: time.Now(), Tunnel: tunnel}
+		c.Channel = domain.ChannelWaiting
+		syncProbe(st)
+		return []store.Event{{Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "run", fmt.Sprintf("%s issued the Beacon grant for %s (%s). Waiting for the grant to report back.", by, id, map[bool]string{true: "reverse tunnel", false: "SSH 22 from the egress address"}[tunnel]), "", false)}
+	})
+	if err != nil {
+		return err
+	}
 	go func() {
-		var hosts []string
-		s.st.View(func(st *domain.State) {
-			for _, h := range st.Probe.Expected {
-				found := false
-				for _, on := range st.Probe.Hosts {
-					if on == h {
-						found = true
-					}
-				}
-				if !found {
-					hosts = append(hosts, h)
-				}
+		time.Sleep(2500 * time.Millisecond)
+		s.st.Update(func(st *domain.State) []store.Event {
+			c := st.Cell(id)
+			if c == nil || c.Grant == nil || c.Level >= domain.LevelGranted {
+				return nil
 			}
+			now := time.Now()
+			c.Grant.HostKey = fmt.Sprintf("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI%06x…", rand.Intn(0xffffff))
+			c.Grant.InstalledAt = &now
+			c.Level = domain.LevelGranted
+			c.Hands = domain.HandsSSH
+			if c.Grant.Tunnel {
+				c.Hands = domain.HandsTunnel
+			}
+			c.Channel = domain.ChannelOnline
+			syncProbe(st)
+			return []store.Event{{Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "signal", fmt.Sprintf("Grant on %s reported back: host key pinned, instance identity matches the provider, probe dialled in over OpAMP. %s. Hands: %s.", id, c.LevelName(), map[string]string{domain.HandsSSH: "SSH from the egress address, Ansible catalogue", domain.HandsTunnel: "SSH through the reverse tunnel, Ansible catalogue"}[c.Hands]), "", false), store.Toast(id + " is at Level 1")}
 		})
-		for i, h := range hosts {
-			time.Sleep(time.Duration(1500+i*400) * time.Millisecond)
-			s.st.Update(func(st *domain.State) []store.Event {
-				if st.Probe.Status == domain.ProbeNone {
-					return nil
+	}()
+	return nil
+}
+
+// apiAccess raises a cluster cell to Level 1: the kube identity and the
+// network path, done by Beacon through the connection.
+func (s *Server) apiAccess(w http.ResponseWriter, r *http.Request) {
+	if err := s.apiAccessCell(r.PathValue("id"), s.userName()); err != nil {
+		writeErr(w, 409, err)
+		return
+	}
+	writeJSON(w, 202, map[string]any{"ok": true})
+}
+
+func (s *Server) apiAccessCell(id, by string) error {
+	var err error
+	var provider string
+	s.st.Update(func(st *domain.State) []store.Event {
+		c := st.Cell(id)
+		switch {
+		case c == nil:
+			err = errors.New("no such cell")
+		case !c.IsCluster():
+			err = errors.New("a VM takes the grant, not API access")
+		case c.Level >= domain.LevelAPI:
+			err = errors.New(id + " already has API access")
+		case c.Channel == domain.ChannelWaiting:
+			err = errors.New(id + " is already being raised")
+		}
+		if err != nil {
+			return nil
+		}
+		provider = c.Provider
+		c.Channel = domain.ChannelWaiting
+		syncProbe(st)
+		text := fmt.Sprintf("%s enabled API access on %s: checking the role assignments and appending the egress address to the authorized IP ranges.", by, id)
+		if provider == "upcloud" {
+			text = fmt.Sprintf("%s enabled API access on %s: appending the egress address to the control plane IP filter, fetching the admin kubeconfig once, creating the beacon-read and beacon-write ServiceAccounts.", by, id)
+		}
+		return []store.Event{{Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "run", text, "", false)}
+	})
+	if err != nil {
+		return err
+	}
+	go func() {
+		time.Sleep(2200 * time.Millisecond)
+		s.st.Update(func(st *domain.State) []store.Event {
+			c := st.Cell(id)
+			if c == nil || c.Level >= domain.LevelAPI {
+				return nil
+			}
+			c.Level = domain.LevelAPI
+			c.Hands = domain.HandsKubeAPI
+			c.Channel = domain.ChannelConnected
+			syncProbe(st)
+			text := fmt.Sprintf("%s: Entra token exchanged, nodes and namespaces listed. %s. Hands: Kubernetes API in the permitted namespaces.", id, c.LevelName())
+			if provider == "upcloud" {
+				text = fmt.Sprintf("%s: IP filter updated, ServiceAccount tokens stored, admin kubeconfig discarded (fetched %s; rotation is through UpCloud support). %s. Hands: Kubernetes API in the permitted namespaces.", id, time.Now().Format("15:04"), c.LevelName())
+			}
+			return []store.Event{{Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "signal", text, "", false), store.Toast(id + " is at Level 1")}
+		})
+	}()
+	return nil
+}
+
+// cellProbe installs the probe on a cluster at Level 1, raising it to Level 2.
+func (s *Server) cellProbe(w http.ResponseWriter, r *http.Request) {
+	if err := s.probeCell(r.PathValue("id"), s.userName()); err != nil {
+		writeErr(w, 409, err)
+		return
+	}
+	writeJSON(w, 202, map[string]any{"ok": true})
+}
+
+func (s *Server) probeCell(id, by string) error {
+	var err error
+	s.st.Update(func(st *domain.State) []store.Event {
+		c := st.Cell(id)
+		switch {
+		case c == nil:
+			err = errors.New("no such cell")
+		case !c.IsCluster():
+			err = errors.New("on a VM the grant installs the probe")
+		case c.Level < domain.LevelAPI:
+			err = errors.New(id + " needs API access (Level 1) before the probe")
+		case c.HasProbe():
+			err = errors.New(id + " already has the probe")
+		case c.Channel == domain.ChannelWaiting:
+			err = errors.New(id + " is already being raised")
+		}
+		if err != nil {
+			return nil
+		}
+		c.Channel = domain.ChannelWaiting
+		syncProbe(st)
+		return []store.Event{{Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "run", fmt.Sprintf("%s applied the probe manifest on %s: namespace beacon-system, DaemonSet and cluster collector. Waiting for the collectors to dial in.", by, id), "", false)}
+	})
+	if err != nil {
+		return err
+	}
+	go func() {
+		time.Sleep(2500 * time.Millisecond)
+		s.st.Update(func(st *domain.State) []store.Event {
+			c := st.Cell(id)
+			if c == nil || c.HasProbe() {
+				return nil
+			}
+			c.Level = domain.LevelProbe
+			c.Channel = domain.ChannelOnline
+			syncProbe(st)
+			return []store.Event{{Type: "cells", Data: st.Cells}, {Type: "probe", Data: st.Probe}, store.Activity(st, "signal", fmt.Sprintf("Probe on %s dialled in over OpAMP from every node. %s.", id, c.LevelName()), "", false), store.Toast(id + " is at Level 2")}
+		})
+	}()
+	return nil
+}
+
+// raiseAll is the demo shortcut: every cell goes to its highest level, one
+// step after another, as if the operator had run each grant and click.
+func (s *Server) raiseAll(w http.ResponseWriter, _ *http.Request) {
+	var ids []string
+	s.st.View(func(st *domain.State) {
+		for _, c := range st.Cells {
+			if c.ProbeCapable && c.Level < c.MaxLevel() && c.Channel != domain.ChannelWaiting {
+				ids = append(ids, c.ID)
+			}
+		}
+	})
+	if len(ids) == 0 {
+		writeErr(w, 409, errors.New("every cell is already at its highest level"))
+		return
+	}
+	by := s.userName()
+	go func() {
+		for i, id := range ids {
+			time.Sleep(time.Duration(300+i*400) * time.Millisecond)
+			var cluster bool
+			var level int
+			s.st.View(func(st *domain.State) {
+				if c := st.Cell(id); c != nil {
+					cluster = c.IsCluster()
+					level = c.Level
 				}
-				st.Probe.Hosts = append(st.Probe.Hosts, h)
-				if len(st.Probe.Hosts) == len(st.Probe.Expected) {
-					st.Probe.Status = domain.ProbeOnline
-				}
-				if c := st.Cell(h); c != nil {
-					c.Tier = domain.TierProbe
-					c.Channel = domain.ChannelOnline
-				}
-				return []store.Event{{Type: "probe", Data: st.Probe}, {Type: "cells", Data: st.Cells}, store.Activity(st, "signal", "Probe on "+h+" dialled in over OpAMP. Cell raised to the probe tier.", "", false), store.Toast("Probe online: " + h)}
 			})
+			switch {
+			case !cluster:
+				_ = s.grantCell(id, false, by)
+			case level < domain.LevelAPI:
+				_ = s.apiAccessCell(id, by)
+				time.Sleep(2600 * time.Millisecond)
+				_ = s.probeCell(id, by)
+			default:
+				_ = s.probeCell(id, by)
+			}
 		}
 	}()
-	writeJSON(w, 202, map[string]any{"ok": true})
+	writeJSON(w, 202, map[string]any{"ok": true, "cells": ids})
 }
 
 func (s *Server) decide(w http.ResponseWriter, r *http.Request) {
@@ -662,8 +880,8 @@ func (s *Server) startScenario(w http.ResponseWriter, r *http.Request) {
 			errOut = fmt.Errorf("onboard %s as a cell first", sc.Resource)
 			return nil
 		}
-		if cell.ProbeCapable && cell.Tier != domain.TierProbe {
-			errOut = fmt.Errorf("install the probe on %s first; this scenario needs in-guest signals", sc.Resource)
+		if cell.ProbeCapable && !cell.HasProbe() {
+			errOut = fmt.Errorf("raise %s to Level %d first; this scenario needs probe signals", sc.Resource, cell.ProbeLevel())
 			return nil
 		}
 		for _, o := range st.Scenarios {

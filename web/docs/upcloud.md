@@ -6,9 +6,11 @@ What must exist in your UpCloud account for each level, and the exact steps. Rea
 
 A sub-account with an API token, and permissions granted by your main account.
 
+The connection form asks for the sub-account, its API token and validity, and the permissions you granted, and shows every command below filled in with your values.
+
 1. **Create a sub-account** for Beacon in the control panel under People.
-2. **Create an API token** for it. Tokens are valid at most 365 days; set `allowed_ip_ranges` to the tenant egress address. Basic authentication is being deprecated and is not accepted.
-3. **Grant permissions** from the main account: target type `server` with the server UUID (or `*`), `managed_kubernetes` with the cluster UUID. Add `storage: yes` if Beacon should read storage details.
+2. **Create an API token** for it. Tokens are valid at most 365 days; set `allowed_ip_ranges` to the tenant egress address. Basic authentication is being deprecated and is not accepted. The form shows the `POST /1.3/account/tokens` call.
+3. **Grant permissions** from the main account with `POST /1.3/permission/grant`: target type `server` with the server UUID (or `*`), `managed_kubernetes` with the cluster UUID. Add `storage: yes` if Beacon should read storage details.
 4. **Validate.** Beacon lists what the token can reach and fills the catalogue. UpCloud permissions are per resource and carry no read and write split, so a server permission allows stop as well as read; Beacon's policy gate is the only split, and the connection page says so.
 
 Beacon tracks the token's expiry and takes the connection offline with a finding before it lapses.

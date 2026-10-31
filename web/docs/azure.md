@@ -6,9 +6,11 @@ What must exist in your Azure subscription for each level, and the exact steps. 
 
 One service principal for Beacon in your Entra directory, with roles at a subscription or resource group scope.
 
-1. **Create the identity.** Either a tenant administrator grants admin consent to the Beacon application, which creates the service principal in your directory, or you bring your own app registration and add a **federated credential** that trusts the tenant runtime's OIDC issuer (issuer URL and subject are shown on the connection form; audience `api://AzureADTokenExchange`). A client secret is accepted only as a fallback.
-2. **Assign the read role.** `Reader` at the scope. It covers discovery through Resource Graph, instance views, platform metrics, the Activity Log and Resource Health. `Monitoring Reader` is not needed.
-3. **Assign the write role, optional.** A custom role with only the actions Beacon's catalogue uses; the connection form lists them per cell kind below. Assigning roles needs Owner, User Access Administrator or Role Based Access Control Administrator at the scope.
+The connection form asks for the directory (Entra tenant id), the subscription id, the identity, a read scope and an optional write scope, and shows every command below filled in with your values.
+
+1. **Create the identity.** Either a tenant administrator opens the consent link the form shows and accepts, which creates the Beacon service principal in your directory and gives you its object id; or you bring your own app registration with a **federated credential** that trusts the tenant runtime's OIDC issuer (issuer, subject and audience `api://AzureADTokenExchange` are shown on the form), a certificate, or a client secret as the fallback.
+2. **Assign the read roles.** `Reader` at the scope covers discovery through Resource Graph, instance views, platform metrics, the Activity Log and Resource Health; `Monitoring Reader` is not needed. For clusters in scope: `Azure Kubernetes Service RBAC Reader`, `Azure Kubernetes Service Cluster User Role`, and the custom `Beacon AKS reader` role (data action `managedClusters/nodes/read`), whose definition the form offers for download.
+3. **Create and assign the write roles, optional.** Three custom roles with only the catalogue's actions: `Beacon VM operator`, `Beacon AKS operator` and `Beacon AKS namespace writer`. The form offers the JSON and the assignment commands. Assigning roles needs Owner, User Access Administrator or Role Based Access Control Administrator at the scope.
 4. **Validate.** Beacon lists the role assignments it finds, derives its capabilities from them, fills the catalogue of what it could manage, and refuses to connect if the read identity carries write actions.
 
 ::layers vm

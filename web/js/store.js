@@ -71,7 +71,7 @@ export const sel = {
     const s = store.state; if (!s || !s.tenant) return null;
     if (!s.connections.some((c) => c.status === 'connected')) return { nav: 'connections', tip: 'Start by creating a connection', detail: 'A connection is an identity at a scope. It discovers what Beacon could manage; you choose what becomes a cell.', doc: '#docs/model' };
     if (!s.cells.length) return { nav: 'connections', tip: 'Onboard what your connection discovered', detail: 'Each connection lists what it found. Pick what Beacon should manage; each becomes a cell at Level 0.', doc: '#docs/model/levels-of-reach' };
-    if (s.cells.some((c) => c.probeCapable && c.tier !== 'probe')) return { nav: 'cells', tip: 'Install the probe on your cells', detail: 'The grant raises a cell to Level 1: in-guest telemetry and hands on the host.', doc: '#docs/grant' };
+    if (s.cells.some((c) => c.probeCapable && c.level < (/cluster/.test(c.kind) ? 2 : 1))) return { nav: 'cells', tip: 'Raise your cells', detail: 'Each cell page has the manual steps for its next level: the grant on a VM, API access and the probe on a cluster.', doc: '#docs/model/levels-of-reach' };
     return null;
   },
   cell: (id) => store.state.cells.find((c) => c.id === id),

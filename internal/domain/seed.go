@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Seed data for a fresh tenant. In the real product these come from discovery
 // and the tenant's own configuration; here they describe the simulated estate.
@@ -18,6 +21,7 @@ var Inventory = map[string][]Candidate{
 	},
 	"upcloud": {
 		{ID: "edge-01", Kind: "UpCloud server", Detail: "1 vCPU 1 GB · de-fra1", Supported: true, ProbeCapable: true, Labels: map[string]string{"app": "edge", "tier": "proxy", "env": "production", "os": "linux", "owner": "ops@shop.example", "criticality": "standard"}},
+		{ID: "uks-edge", Kind: "UKS cluster", Detail: "2 nodes · 1.34 · fi-hel2", Supported: true, ProbeCapable: true, Labels: map[string]string{"app": "edge", "tier": "api", "env": "production", "platform": "kubernetes", "owner": "ops@shop.example", "criticality": "standard"}},
 		{ID: "db-01", Kind: "UpCloud managed PostgreSQL", Detail: "2 vCPU · fi-hel2", Labels: map[string]string{"app": "shop", "tier": "data", "env": "production"}},
 	},
 }
@@ -26,7 +30,7 @@ var Inventory = map[string][]Candidate{
 func Discover(c *Connection) {
 	c.Catalogue = nil
 	for _, cand := range Inventory[c.Provider] {
-		probe := &Cell{ID: cand.ID, Provider: c.Provider, ResourceGroup: cand.ResourceGroup}
+		probe := &Cell{ID: cand.ID, Kind: cand.Kind, Provider: c.Provider, ResourceGroup: cand.ResourceGroup}
 		access := c.AccessTo(probe)
 		if access == "" {
 			continue
@@ -47,17 +51,17 @@ func NewCell(c *Connection, cand *Candidate) *Cell {
 	for k, v := range cand.Labels {
 		labels[k] = v
 	}
-	return &Cell{ID: cand.ID, Kind: cand.Kind, Detail: cand.Detail, Provider: c.Provider, ResourceGroup: cand.ResourceGroup, ConnectionID: c.ID, Tier: TierBasic, Channel: ChannelConnected, ProbeCapable: cand.ProbeCapable, Labels: labels, Telemetry: DefaultTelemetry(cand.Kind), OnboardedAt: time.Now()}
+	return &Cell{ID: cand.ID, Kind: cand.Kind, Detail: cand.Detail, Provider: c.Provider, ResourceGroup: cand.ResourceGroup, ConnectionID: c.ID, Level: LevelConnected, Hands: HandsNone, Channel: ChannelConnected, ProbeCapable: cand.ProbeCapable, Labels: labels, Telemetry: DefaultTelemetry(cand.Kind), OnboardedAt: time.Now()}
 }
 
 // DefaultTelemetry is the probe configuration Beacon proposes for a kind.
 func DefaultTelemetry(kind string) Telemetry {
-	switch kind {
-	case "AKS cluster":
+	switch {
+	case strings.Contains(kind, "cluster"):
 		return Telemetry{HostMetrics: true, Processes: false, OTLP: true,
 			Logs:      []LogSource{{Name: "shop-api", Enabled: true}, {Name: "ingress-nginx", Enabled: true}},
 			Receivers: []Receiver{{Name: "kubelet", Detail: "node and pod metrics", Enabled: true}, {Name: "kube-state", Detail: "deployments, rollouts, restarts", Enabled: true}, {Name: "nginx-ingress", Detail: "upstream status codes", Enabled: false}}}
-	case "Azure VM":
+	case kind == "Azure VM":
 		return Telemetry{HostMetrics: true, Processes: true, OTLP: false,
 			Logs:      []LogSource{{Name: "/var/log/syslog", Enabled: true}, {Name: "/var/log/nginx/access.log", Enabled: true}, {Name: "/var/log/nginx/error.log", Enabled: true}, {Name: "/var/log/auth.log", Enabled: false}},
 			Receivers: []Receiver{{Name: "nginx", Detail: "stub_status: requests, connections", Enabled: true}, {Name: "filestats", Detail: "size and age of watched files", Enabled: true}}}
@@ -170,56 +174,70 @@ func SeedScenarios() []*Scenario {
 	}
 }
 
-// ValidateAzure simulates validation: it derives the role assignments the
-// identity would hold from the requested scopes, then the capabilities from
-// the roles. Log Analytics Reader is never granted by consent alone, so that
-// capability shows as missing until the customer assigns it.
+// ValidateAzure simulates validation against the reviewed access model: the
+// role assignments the identity would hold at the requested scopes, and the
+// capabilities those roles give. Reader covers every Level 0 read; AKS reads
+// need the Kubernetes RBAC roles; writes come only from the custom roles.
 func ValidateAzure(c *Connection) {
-	c.Identity = "Service principal Beacon (" + c.AuthMode + ", " + c.CredentialKind + ")"
+	c.Identity = "Service principal Beacon, consented (" + c.CredentialKind + ")"
+	if c.ObjectID == "" {
+		c.ObjectID = "6f1e2d3c-" + short(c.Directory) + "-beacon"
+	}
 	if c.AuthMode == "byo" && c.ClientID != "" {
 		c.Identity = "App registration " + short(c.ClientID) + " (" + c.CredentialKind + ")"
 	}
 	c.Roles = []RoleAssignment{
 		{Identity: "read", Role: "Reader", Scope: c.ReadScope},
-		{Identity: "read", Role: "Monitoring Reader", Scope: c.ReadScope},
 		{Identity: "read", Role: "Azure Kubernetes Service RBAC Reader", Scope: c.ReadScope},
+		{Identity: "read", Role: "Azure Kubernetes Service Cluster User Role", Scope: c.ReadScope},
+		{Identity: "read", Role: "Beacon AKS reader (custom: managedClusters/nodes/read)", Scope: c.ReadScope},
 	}
 	hasWrite := c.WriteScope.Level != ScopeNone && c.WriteScope.Level != ""
 	if hasWrite {
 		c.Roles = append(c.Roles,
-			RoleAssignment{Identity: "write", Role: "Virtual Machine Contributor", Scope: c.WriteScope},
-			RoleAssignment{Identity: "write", Role: "Azure Kubernetes Service RBAC Writer", Scope: c.WriteScope})
+			RoleAssignment{Identity: "write", Role: "Beacon VM operator (custom: start, restart, deallocate, powerOff)", Scope: c.WriteScope},
+			RoleAssignment{Identity: "write", Role: "Beacon AKS operator (custom: agentPools/write, start, stop)", Scope: c.WriteScope},
+			RoleAssignment{Identity: "write", Role: "Beacon AKS namespace writer (custom data actions, no secrets)", Scope: c.WriteScope})
 	}
-	writeState := "missing"
-	writeDetail := "no write identity on this connection"
-	if hasWrite {
-		writeState = "available"
-		writeDetail = "Run Command · write identity at " + c.WriteScope.Level + " " + c.WriteScope.Target
+	w := func(detail string) Capability {
+		if hasWrite {
+			return Capability{Name: "", Detail: detail + " · write identity at " + c.WriteScope.Level + " " + c.WriteScope.Target, State: "available"}
+		}
+		return Capability{Name: "", Detail: "no write identity on this connection", State: "missing"}
 	}
+	named := func(name string, cap Capability) Capability { cap.Name = name; return cap }
 	c.Capabilities = []Capability{
+		{Name: "Read identity carries no write actions", Detail: "checked at validation · Reader only", State: "available"},
 		{Name: "Resource discovery", Detail: "Resource Graph · Reader", State: "available"},
-		{Name: "Platform metrics", Detail: "Azure Monitor · Monitoring Reader", State: "available"},
-		{Name: "Resource health verdict", Detail: "Resource Health API · Reader", State: "available"},
-		{Name: "Activity log, who changed what", Detail: "Activity Log · Reader", State: "available"},
+		{Name: "Platform metrics", Detail: "Azure Monitor · Reader (Percentage CPU, Available Memory Bytes, network, disk, VM availability)", State: "available"},
+		{Name: "Resource health verdict", Detail: "Resource Health · Reader", State: "available"},
+		{Name: "Activity log, who changed what", Detail: "Activity Log · Reader · 90 days", State: "available"},
 		{Name: "Log Analytics queries", Detail: "needs Log Analytics Reader on the workspace", State: "missing"},
-		{Name: "Kubernetes API", Detail: "Entra RBAC · AKS RBAC Reader", State: "available"},
-		{Name: "In-guest fixes", Detail: writeDetail, State: writeState},
-		{Name: "Rollouts on AKS", Detail: map[bool]string{true: "AKS RBAC Writer · write identity", false: "no write identity on this connection"}[hasWrite], State: writeState},
+		{Name: "Kubernetes API reads", Detail: "AKS RBAC Reader + Cluster User Role + nodes/read · Entra token", State: "available"},
+		named("VM power actions", w("start, restart, deallocate, powerOff")),
+		named("AKS node pool scale, start, stop", w("agentPools/write, start/action, stop/action")),
+		named("AKS namespace writes", w("deployments write, pods delete, pods/exec")),
 	}
 }
 
-// ValidateUpCloud simulates validation of a sub-account token.
+// ValidateUpCloud simulates validation of a sub-account API token: the
+// permissions it carries and what the API gives through them. UpCloud has no
+// read and write split and no server metrics endpoint; both are said plainly.
 func ValidateUpCloud(c *Connection) {
 	if c.SubAccount == "" {
-		c.SubAccount = "beacon-ro"
+		c.SubAccount = "beacon"
 	}
 	c.Identity = "API token for sub-account " + c.SubAccount
-	if len(c.Grants) == 0 {
-		c.Grants = []string{"server.read", "server.power", "database.read"}
+	if len(c.Permissions) == 0 {
+		c.Permissions = []Permission{{TargetType: "server", TargetIdentifier: "*"}, {TargetType: "managed_kubernetes", TargetIdentifier: "*"}}
 	}
-	has := func(g string) bool {
-		for _, x := range c.Grants {
-			if x == g {
+	if c.TokenExpiresAt == nil {
+		t := time.Now().Add(365 * 24 * time.Hour)
+		c.TokenExpiresAt = &t
+	}
+	has := func(tt string) bool {
+		for _, p := range c.Permissions {
+			if p.TargetType == tt {
 				return true
 			}
 		}
@@ -232,12 +250,14 @@ func ValidateUpCloud(c *Connection) {
 		return "missing"
 	}
 	c.Capabilities = []Capability{
-		{Name: "Server inventory and state", Detail: "GET /1.3/server · server.read", State: state(has("server.read"))},
-		{Name: "Managed database metrics", Detail: "GET /1.3/database/{id}/metrics · database.read", State: state(has("database.read"))},
-		{Name: "Power operations", Detail: "POST /1.3/server/{id}/start · server.power", State: state(has("server.power"))},
-		{Name: "Host CPU, memory, disk", Detail: "Beacon probe on servers", State: "available"},
-		{Name: "Activity log", State: "none"},
-		{Name: "Resource health verdict", State: "none"},
+		{Name: "No read and write split", Detail: "a permission allows every operation on its target; the Beacon policy gate is the only split", State: "note"},
+		{Name: "Server inventory and state", Detail: "GET /1.3/server/{uuid} · server permission", State: state(has("server"))},
+		{Name: "Audit log, who did what", Detail: "GET /1.3/audit-logs · actor and source IP · 180 days", State: "available"},
+		{Name: "Server power and firewall", Detail: "POST start, stop, restart, firewall_rule · same server permission, gated by policy", State: state(has("server"))},
+		{Name: "Managed Kubernetes clusters", Detail: "GET /1.3/kubernetes/{uuid}, kubeconfig, IP filter · managed_kubernetes permission", State: state(has("managed_kubernetes"))},
+		{Name: "Managed database metrics", Detail: "GET /1.3/database/{uuid}/metrics · managed_database permission", State: state(has("managed_database"))},
+		{Name: "Server metrics", Detail: "no endpoint in the UpCloud API; the probe at Level 1 provides them", State: "none"},
+		{Name: "Resource health verdict", Detail: "not offered by UpCloud", State: "none"},
 	}
 }
 

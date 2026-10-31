@@ -6,7 +6,7 @@ import { store, apply } from './store.js';
 import { connect } from './api.js';
 import { route } from './router.js';
 import { shell, setupShell, demobar, toast } from './shell.js';
-import { pageLogin, pageSetupTenant, pageSetupConnect } from './pages/setup.js';
+import { pageLogin, pageSetupTenant } from './pages/setup.js';
 import { pageFindings, drawTiles } from './pages/findings.js';
 import { pageInvestigations, pageInv } from './pages/investigations.js';
 import { pageChat } from './pages/chat.js';
@@ -38,7 +38,6 @@ function render() {
   let out;
   if (r === 'login') out = pageLogin();
   else if (r === 'setup-tenant') out = setupShell(pageSetupTenant());
-  else if (r === 'setup-connect') out = setupShell(pageSetupConnect());
   else {
     const parts = r.split('/');
     if (parts[0] === 'docs') { const d = pageDocs(parts[1] || 'model', parts[2]); out = store.state.tenant ? shell(d, { crumb: 'Documentation' }) : setupShell(d); }

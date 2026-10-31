@@ -35,6 +35,10 @@ Dark-first console in the shadcn look; polls are truth and webhooks are hints; p
 
 Sign in, create tenant, land on Findings. The console carries setup one step at a time: the rail item for the next step pulses with a tip and the Findings page shows the same step with a button and a doc link (no connection, onboard, install the probe). The old `#setup-connect` wizard page still exists but nothing routes to it; remove it once the recording no longer needs anything from it.
 
+## App consistency pass, 2026-10-31 (evening)
+
+The app now follows the reviewed access model. Cells carry `level` (0, 1, 2), `hands` (none, ssh, ssh-tunnel, kube-api) and a `grant`; tiers are gone. The Azure form asks for directory, subscription, identity (consent with a consent button and object id, or bring-your-own with federated, certificate or secret) and scopes, and shows the manual steps with the role assignment commands and the custom role JSON. The UpCloud form asks for sub-account, token and validity, and permission rows, and shows the token and grant calls. The cell page shows the ladder of reach, the manual steps for the next level (firewall rule, grant line with a one-time token, tunnel option; AKS and UKS API access steps; the probe manifest), the hands, and revocation. New endpoints: `POST /api/cells/{id}/grant`, `/api-access`, `/probe`; `/api/probe/install` is now the demo shortcut that raises every cell. A UKS cluster `uks-edge` is in the UpCloud inventory. The `#setup-connect` wizard is gone. Validation simulations follow the model (Reader only; custom roles; UpCloud audit log, token expiry, no split).
+
 ## Open items, in the order we discussed
 
 1. Live-mode run with an API key: the investigator and orchestrator prompts have never been exercised against the model.

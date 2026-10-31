@@ -138,9 +138,9 @@ def part1(d: Demo):
     d.click(d.button("Onboard selected as cells").first, pause=2.5)
     # the next step moves to cells: install the probe
     d.go("cells", 2.5)
-    d.hover_read(d.page.get_by_text("can take the probe").first, 2.5)
-    d.click(d.button("Install the probe"), pause=2)
-    d.pause(8)
+    d.hover_read(d.page.get_by_text("can be raised").first, 2.5)
+    d.click(d.button("Raise all cells (demo)"), pause=2)
+    d.pause(14)
     d.hover_read(d.page.get_by_text("one isolated channel per cell"), 3)
     d.hover_read(d.page.get_by_text("identity shared with").first, 2.5)
     d.hover_read(d.page.get_by_text("dedicated identity").first, 2.5)

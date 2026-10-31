@@ -483,7 +483,7 @@ func (o *Orchestrator) contextText(s *domain.State) string {
 	}
 	fmt.Fprintf(&b, "Probes online: %d of %d. Cells: ", len(s.Probe.Hosts), len(s.Probe.Expected))
 	for _, r := range s.Cells {
-		fmt.Fprintf(&b, "%s (%s, tier %s, app %s); ", r.ID, r.Kind, r.Tier, s.GroupName(r.ID))
+		fmt.Fprintf(&b, "%s (%s, %s, hands %s, app %s); ", r.ID, r.Kind, r.LevelName(), r.Hands, s.GroupName(r.ID))
 	}
 	open := 0
 	for _, f := range s.Findings {

@@ -358,6 +358,14 @@ func (t *Toolbox) remediate(action string, args map[string]any, cmd, why string)
 			return
 		}
 		conn = c.Name
+		inGuest := action == "run_command" || action == "restart_service"
+		inCluster := action == "rollout_undo" || action == "delete_pod"
+		switch {
+		case inGuest && !res.HasHands():
+			writeErr = fmt.Errorf("no hands on %s: it is at %s. Run the Beacon grant to raise it to Level 1", res.ID, res.LevelName())
+		case inCluster && res.Level < domain.LevelAPI:
+			writeErr = fmt.Errorf("%s is at %s; %s needs API access (Level 1)", res.ID, res.LevelName(), action)
+		}
 	})
 	if writeErr != nil {
 		t.st.Update(func(s *domain.State) []store.Event {
@@ -553,8 +561,8 @@ func (t *Toolbox) needsProbe(cellID, metric string) error {
 			err = fmt.Errorf("%q is not an onboarded cell", cellID)
 			return
 		}
-		if c.Tier != domain.TierProbe && (metric == "" || inGuestMetrics[metric]) {
-			err = fmt.Errorf("%s is at the basic tier; %s needs the probe. Provider sensors still give cpu_percent, requests_per_second, error_rate_percent and state", cellID, map[bool]string{true: "reading files", false: metric}[metric == ""])
+		if !c.HasProbe() && (metric == "" || inGuestMetrics[metric]) {
+			err = fmt.Errorf("%s is at %s; %s needs the probe (Level %d). Provider sensors still give cpu_percent, requests_per_second, error_rate_percent and state", cellID, c.LevelName(), map[bool]string{true: "reading files", false: metric}[metric == ""], c.ProbeLevel())
 			return
 		}
 		if metric != "" && metric != "cpu_percent" && metric != "requests_per_second" && metric != "error_rate_percent" && metric != "connections" && !c.Telemetry.HostMetrics {
@@ -573,8 +581,8 @@ func (t *Toolbox) logAllowed(cellID, path string) error {
 			err = fmt.Errorf("%q is not an onboarded cell", cellID)
 			return
 		}
-		if c.Tier != domain.TierProbe {
-			err = fmt.Errorf("%s is at the basic tier; logs need the probe", cellID)
+		if !c.HasProbe() && !(c.IsCluster() && c.Level >= domain.LevelAPI) {
+			err = fmt.Errorf("%s is at %s; logs need Level 1", cellID, c.LevelName())
 			return
 		}
 		if !c.Telemetry.LogEnabled(path) {

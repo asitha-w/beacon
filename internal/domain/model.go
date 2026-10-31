@@ -5,6 +5,7 @@ package domain
 
 import (
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -76,6 +77,14 @@ type RoleAssignment struct {
 	Scope    Scope  `json:"scope"`
 }
 
+// Permission is one UpCloud grant: a target type and a resource UUID or "*".
+// UpCloud permissions carry no read and write split; the policy gate is the split.
+type Permission struct {
+	TargetType       string `json:"targetType"`       // server, managed_kubernetes, managed_database, storage, network
+	TargetIdentifier string `json:"targetIdentifier"` // UUID or *
+	Storage          bool   `json:"storage,omitempty"`
+}
+
 // Connection is an identity, a credential, a scope and a network path into one
 // provider. A tenant may hold several per provider with different scopes.
 type Connection struct {
@@ -85,14 +94,17 @@ type Connection struct {
 	Status   string `json:"status"`
 	// Azure
 	Directory      string `json:"directory,omitempty"`      // Entra tenant id
+	SubscriptionID string `json:"subscriptionId,omitempty"` // the subscription the scopes live in
 	AuthMode       string `json:"authMode,omitempty"`       // consent, byo
-	ClientID       string `json:"clientId,omitempty"`       // byo only
-	CredentialKind string `json:"credentialKind,omitempty"` // federated, certificate
+	ClientID       string `json:"clientId,omitempty"`       // byo only; consent uses Beacon's own app
+	ObjectID       string `json:"objectId,omitempty"`       // the service principal in the customer's directory, known after consent or validation
+	CredentialKind string `json:"credentialKind,omitempty"` // federated, certificate, secret
 	ReadScope      Scope  `json:"readScope"`
 	WriteScope     Scope  `json:"writeScope"`
 	// UpCloud
-	SubAccount string   `json:"subAccount,omitempty"`
-	Grants     []string `json:"grants,omitempty"`
+	SubAccount     string       `json:"subAccount,omitempty"`
+	Permissions    []Permission `json:"permissions,omitempty"`    // granted by the main account, per resource, no read and write split
+	TokenExpiresAt *time.Time   `json:"tokenExpiresAt,omitempty"` // API tokens live at most a year
 	// Validation result
 	Catalogue    []Candidate      `json:"catalogue"`
 	Identity     string           `json:"identity,omitempty"`
@@ -111,11 +123,6 @@ func (c *Connection) AccessTo(r *Cell) string {
 		return "write"
 	}
 	if c.Provider == "upcloud" {
-		for _, g := range c.Grants {
-			if g == "server.read" || g == "database.read" {
-				return "read"
-			}
-		}
 		return ""
 	}
 	if c.ReadScope.Covers(r) {
@@ -140,14 +147,32 @@ func (c *Connection) CanWrite(r *Cell) bool {
 		return false
 	}
 	if c.Provider == "upcloud" {
-		for _, g := range c.Grants {
-			if g == "server.power" {
-				return true
-			}
-		}
-		return false
+		return c.Permits(r)
 	}
 	return c.WriteScope.Level != ScopeNone && c.WriteScope.Level != "" && c.WriteScope.Covers(r)
+}
+
+// Permits reports whether an UpCloud permission covers the cell. A permission
+// allows every operation on its target, so it is read and write at once.
+func (c *Connection) Permits(r *Cell) bool {
+	tt := PermissionTarget(r.Kind)
+	for _, p := range c.Permissions {
+		if p.TargetType == tt && (p.TargetIdentifier == "*" || p.TargetIdentifier == r.ID) {
+			return true
+		}
+	}
+	return false
+}
+
+// PermissionTarget maps a cell kind to the UpCloud permission target type.
+func PermissionTarget(kind string) string {
+	switch {
+	case strings.Contains(kind, "cluster"):
+		return "managed_kubernetes"
+	case strings.Contains(kind, "PostgreSQL"), strings.Contains(kind, "database"):
+		return "managed_database"
+	}
+	return "server"
 }
 
 // Probe statuses.
@@ -164,11 +189,33 @@ type Probe struct {
 	Expected []string `json:"expected"`
 }
 
-// Cell tiers and channel states.
+// Levels of reach. A VM has Level 0 and 1; a cluster has Level 0, 1 and 2.
 const (
-	TierBasic = "basic" // provider sensors and provider actions through the API
-	TierProbe = "probe" // the probe is installed: in-guest metrics, logs, files, commands
+	LevelConnected = 0 // the connection sees the cell from outside: state, provider metrics, activity, provider actions
+	LevelGranted   = 1 // VM: the Beacon grant ran; probe telemetry and hands over SSH
+	LevelAPI       = 1 // cluster: a kube identity and a reachable API server; reads and hands through the API
+	LevelProbe     = 2 // cluster: the probe runs in the cluster
+)
 
+// Hands is how Beacon can act inside a cell.
+const (
+	HandsNone    = "none"
+	HandsSSH     = "ssh"        // SSH 22 from the tenant egress, Ansible on top
+	HandsTunnel  = "ssh-tunnel" // the cell dials out with a reverse SSH tunnel
+	HandsKubeAPI = "kube-api"   // the Kubernetes API in the permitted namespaces
+)
+
+// Grant is the state of the Beacon grant on a VM cell.
+type Grant struct {
+	Token       string     `json:"token"` // one-time, bound to the cell, valid for an hour
+	IssuedAt    time.Time  `json:"issuedAt"`
+	Tunnel      bool       `json:"tunnel"`                // the operator chose the reverse tunnel
+	HostKey     string     `json:"hostKey,omitempty"`     // pinned at first connect
+	InstalledAt *time.Time `json:"installedAt,omitempty"` // when the grant reported back
+}
+
+// Channel states.
+const (
 	ChannelConnected = "connected"
 	ChannelWaiting   = "waiting"
 	ChannelOnline    = "online"
@@ -219,12 +266,47 @@ type Cell struct {
 	Provider      string            `json:"provider"`
 	ResourceGroup string            `json:"resourceGroup,omitempty"`
 	ConnectionID  string            `json:"connectionId,omitempty"`
-	Tier          string            `json:"tier"`
+	Level         int               `json:"level"`
+	Hands         string            `json:"hands"`
+	Grant         *Grant            `json:"grant,omitempty"`
 	Channel       string            `json:"channel"`
-	ProbeCapable  bool              `json:"probeCapable"`
+	ProbeCapable  bool              `json:"probeCapable"` // the cell can be raised above Level 0
 	Labels        map[string]string `json:"labels"`
 	Telemetry     Telemetry         `json:"telemetry"`
 	OnboardedAt   time.Time         `json:"onboardedAt"`
+}
+
+// IsCluster reports whether the cell is a Kubernetes cluster rather than a host.
+func (c *Cell) IsCluster() bool { return strings.Contains(c.Kind, "cluster") }
+
+// MaxLevel is the highest level of reach the cell kind has.
+func (c *Cell) MaxLevel() int {
+	if c.IsCluster() {
+		return LevelProbe
+	}
+	return LevelGranted
+}
+
+// ProbeLevel is the level at which the probe runs on this kind.
+func (c *Cell) ProbeLevel() int { return c.MaxLevel() }
+
+// HasProbe reports whether the probe is on the cell.
+func (c *Cell) HasProbe() bool { return c.Level >= c.ProbeLevel() }
+
+// HasHands reports whether Beacon can act inside the cell.
+func (c *Cell) HasHands() bool { return c.Level >= 1 && c.Hands != HandsNone && c.Hands != "" }
+
+// LevelName is the console label for the current level.
+func (c *Cell) LevelName() string {
+	switch {
+	case c.Level == 0:
+		return "Level 0 · connected"
+	case c.IsCluster() && c.Level == 1:
+		return "Level 1 · API access"
+	case c.IsCluster():
+		return "Level 2 · probe"
+	}
+	return "Level 1 · granted"
 }
 
 // Candidate is one thing discovered through a connection that could become a cell.

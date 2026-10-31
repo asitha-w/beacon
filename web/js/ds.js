@@ -54,7 +54,7 @@ export function ApprovalCard(p = {}) {
     ]),
   ]);
 }
-const pillWords = { available: 'Available', missing: 'Missing permission', none: 'Not offered' };
+const pillWords = { available: 'Available', missing: 'Missing permission', none: 'Not offered', note: 'Note' };
 export function CapabilityList(p = {}) {
   return el('ul', { class: 'bc-caps' }, (p.items || []).map((it) => { const st = it.state || 'none'; return el('li', null, [el('span', { class: 'bc-cap-name', text: it.name || '' }), it.detail ? el('span', { class: 'bc-cap-detail', text: it.detail }) : null, el('span', { class: 'bc-pill bc-pill-' + st, text: pillWords[st] || st })]); }));
 }
