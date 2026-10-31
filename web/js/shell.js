@@ -12,6 +12,10 @@ export const NAV = [
   ['sep', 'Help'],
   ['docs', 'Documentation', 'layers'],
 ];
+// docsButton sits top right on every page: the documentation, outlined in the brand green.
+function docsButton() {
+  return el('a', { class: 'docsbtn', href: '#docs', title: 'Documentation: the model, Azure and UpCloud step by step, the grant, the probe' }, [icon('layers'), 'Documentation']);
+}
 function themeToggle() {
   const dark = (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'dark';
   return el('button', { class: 'iconbtn', title: dark ? 'Switch to light' : 'Switch to dark', onClick: () => { const next = dark ? 'light' : 'dark'; document.documentElement.dataset.theme = next; try { localStorage.setItem('beacon-theme', next); } catch (e) {} dispatchEvent(new HashChangeEvent('hashchange')); } }, [icon(dark ? 'sun' : 'moon')]);
@@ -28,13 +32,13 @@ export function shell(contentNode, opts = {}) {
     el('div', { class: 'me' }, [el('span', { class: 'avatar', text: (s.user ? s.user.name : 'U').slice(0, 1).toUpperCase() }), el('div', { class: 'who' }, [el('span', { text: s.user ? s.user.name : '' }), el('span', { class: 'sm', text: s.user ? s.user.email : '' })]), el('a', { href: '#', title: 'Sign out', onClick: (e) => { e.preventDefault(); api.logout(); } }, [icon('logout')])]),
   ]);
   const crumbs = (opts.crumb || '').split(' / ');
-  const top = el('div', { class: 'topbar' }, [el('span', { class: 'crumb' }, crumbs.flatMap((c, i) => [i ? el('span', { text: '/' }) : null, i === crumbs.length - 1 ? el('b', { text: c }) : el('span', { text: c })])), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: probeSummary() }), el('span', { class: 'badge', text: s.reasoner === 'claude' ? s.model : 'scripted mode' }), themeToggle()]);
+  const top = el('div', { class: 'topbar' }, [el('span', { class: 'crumb' }, crumbs.flatMap((c, i) => [i ? el('span', { text: '/' }) : null, i === crumbs.length - 1 ? el('b', { text: c }) : el('span', { text: c })])), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: probeSummary() }), el('span', { class: 'badge', text: s.reasoner === 'claude' ? s.model : 'scripted mode' }), docsButton(), themeToggle()]);
   const body = el('div', { class: 'body' + (opts.aside ? '' : ' noaside') }, [el('div', { class: 'content' }, [contentNode]), opts.aside ? el('aside', { class: 'aside', 'aria-label': 'Activity' }, [activityPanel()]) : null]);
   return el('div', { class: 'app' }, [rail, el('div', { class: 'main' }, [top, body])]);
 }
 export function setupShell(contentNode) {
   const s = store.state;
-  return el('div', { class: 'app', style: 'grid-template-columns:1fr' }, [el('div', { class: 'main' }, [el('div', { class: 'topbar' }, [el('div', { class: 'brand', style: 'padding:0' }, [el('i', null, [icon('beacon')]), 'Beacon']), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: s.user ? s.user.email : '' }), themeToggle()]), el('div', { class: 'body noaside' }, [el('div', { class: 'content' }, [contentNode])])])]);
+  return el('div', { class: 'app', style: 'grid-template-columns:1fr' }, [el('div', { class: 'main' }, [el('div', { class: 'topbar' }, [el('div', { class: 'brand', style: 'padding:0' }, [el('i', null, [icon('beacon')]), 'Beacon']), el('span', { class: 'spacer' }), el('span', { class: 'sm muted', text: s.user ? s.user.email : '' }), docsButton(), themeToggle()]), el('div', { class: 'body noaside' }, [el('div', { class: 'content' }, [contentNode])])])]);
 }
 function probeSummary() {
   const s = store.state; const cells = s.cells.length; const probes = s.probe.hosts.length;
