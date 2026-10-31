@@ -5,7 +5,7 @@ Working folder and git repo for Beacon. Private GitHub repo: https://github.com/
 ## Where to start
 
 - `./start.sh` runs everything on http://localhost:8080; `./start.sh --dev` serves the console from `web/` so edits show on refresh. `README.md` explains the model and the run flow.
-- `docs/architecture/beacon-architecture.png` is the one-page picture for the team. `docs/recordings/2026-10-30-beacon-walkthrough.mp4` is the 5-minute video; `tools/record/record.py` regenerates it.
+- `docs/architecture/beacon-architecture.png` is the one-page picture for the team. `docs/recordings/2026-10-31-beacon-walkthrough.mp4` is the 5-minute video; `tools/record/record.py` regenerates it.
 - `docs/planning/` holds the product planning notes: the technical gap list and one file per settled topic. Read `technical-gaps.md` there before picking the next design question.
 - `ARTIFACTS.md` lists the published claude.ai artifacts from day one. The design system there still shows the old IBM Plex look; `web/css/beacon.css` is now the source of truth.
 
