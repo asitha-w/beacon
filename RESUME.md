@@ -6,6 +6,7 @@ Working folder and git repo for Beacon. Private GitHub repo: https://github.com/
 
 - `./start.sh` runs everything on http://localhost:8080; `./start.sh --dev` serves the console from `web/` so edits show on refresh. `README.md` explains the model and the run flow.
 - `docs/architecture/beacon-architecture.png` is the one-page picture for the team. `docs/recordings/2026-10-30-beacon-walkthrough.mp4` is the 5-minute video; `tools/record/record.py` regenerates it.
+- `docs/planning/` holds the product planning notes: the technical gap list and one file per settled topic. Read `technical-gaps.md` there before picking the next design question.
 - `ARTIFACTS.md` lists the published claude.ai artifacts from day one. The design system there still shows the old IBM Plex look; `web/css/beacon.css` is now the source of truth.
 
 ## The model, as agreed on 2026-10-30
@@ -21,6 +22,13 @@ Working folder and git repo for Beacon. Private GitHub repo: https://github.com/
 ## Earlier decisions still standing
 
 Dark-first console in the shadcn look; polls are truth and webhooks are hints; probe is an unmodified OpenTelemetry Collector over OpAMP; Postgres, ClickHouse, Temporal, OPA, NATS JetStream, Go; PoC on an UpCloud host in docker compose.
+
+## Settled on 2026-10-31 (design only, no code)
+
+- Levels of reach per cell: VM Level 0 connected, Level 1 granted; Kubernetes Level 0 connected, Level 1 API access, Level 2 probe. `docs/planning/cell-access-model.md` is the reviewed reference of what must exist at each level on Azure and UpCloud.
+- VM hands: SSH direct from the tenant's static egress, reverse tunnel fallback, never a jump box; Ansible on top; per-tenant SSH CA with short-lived certificates; the "Beacon grant" is one line the operator runs. `docs/planning/hands-ssh.md`.
+- Twenty comparable products studied from their own docs: `docs/planning/competitor-access-models.md`.
+- Still to test on real infrastructure: listed at the end of `cell-access-model.md`.
 
 ## Open items, in the order we discussed
 
