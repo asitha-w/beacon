@@ -1,5 +1,7 @@
 # Beacon
 
+> **Status: concept evaluation.** This repository explores an idea; it is not a finished product. It is not fully functional: parts are simulated or incomplete, and it is not intended for production use.
+
 Agentic reliability operations for teams on Azure and UpCloud without a full-time SRE. This repository holds the product shaping work (PRD, design system, static prototype) and the first runnable version of the console: a Go service with a simulated tenant, a real agent loop, and the console UI.
 
 ## What is here
